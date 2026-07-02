@@ -1,0 +1,26 @@
+# Rust build artifacts
+target/
+
+# Dependency directories
+Cargo.lock
+
+# IDE settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary files
+flycheck*
+target_temp/
+scratch_lib_downloads/
+
+# Python and Maturin build artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.whl
+*.egg-info/
