@@ -1,10 +1,10 @@
 """
-gh3_allfunc_moreestimate_sr.py
+feynman_eml_sr_model_first_AI.py
 ======================================================
-Feynman 方程式のシンボリック回帰 - 高精度設定版
-  - BEAM_WIDTH : 1000  (前回 300)
-  - N_SAMPLES  : 750   (前回 200)
-  - MAX_COMPLEXITY: 6  (同じ)
+Feynman 方程式のシンボリック回帰 - eml-sr_model_first_AI 版
+  - BEAM_WIDTH : 1000  (従来 eml-sr 実験と同一)
+  - N_SAMPLES  : 750   (従来 eml-sr 実験と同一)
+  - MAX_COMPLEXITY: 6  (従来 eml-sr 実験と同一)
   - 失敗した式も出力数式を記録しレポートに含める
 ======================================================
 """
@@ -15,15 +15,15 @@ import json
 import time
 import numpy as np
 import pandas as pd
-import eml_sr
+import eml_sr_model_first_AI
 
 # ===== パス設定 =====
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+PROJECT_ROOT = SCRIPT_DIR
 
 CSV_PATH     = os.path.join(PROJECT_ROOT, "data", "FeynmanEquations.csv")
-RESULTS_PATH = os.path.join(SCRIPT_DIR, "gh3_moreestimate_results.json")
-REPORT_PATH  = os.path.join(PROJECT_ROOT, "texts", "allfunc_moreestimate_sr_report.md")
+RESULTS_PATH = os.path.join(PROJECT_ROOT, "results", "eml_sr_model_first_AI_feynman_results.json")
+REPORT_PATH  = os.path.join(PROJECT_ROOT, "texts", "eml_sr_model_first_AI_feynman_report.md")
 
 # ===== 実験設定 =====
 N_SAMPLES       = 750
@@ -111,19 +111,19 @@ def rmse(y_true, y_pred):
 
 
 def run_sr(eq_id, X_train, y_train):
-    """eml-sr を実行して結果 dict を返す"""
+    """eml-sr_model_first_AI を実行して結果 dict を返す"""
     base = {
         "eq_id": eq_id, "status": "failed",
         "found_formula": None, "found_python": None,
         "rmse": None, "complexity": None,
         "elapsed_s": 0.0, "candidates": [],
-        "all_candidates": [],      # Pareto front 全候補
+        "all_candidates": [],
     }
     try:
         inputs_list  = X_train.tolist()
         targets_list = y_train.tolist()
 
-        searcher   = eml_sr.Searcher(max_complexity=MAX_COMPLEXITY, beam_width=BEAM_WIDTH)
+        searcher   = eml_sr_model_first_AI.Searcher(max_complexity=MAX_COMPLEXITY, beam_width=BEAM_WIDTH)
         start_t    = time.time()
         candidates = searcher.find_candidates(inputs_list, targets_list)
         elapsed    = time.time() - start_t
@@ -149,6 +149,7 @@ def run_sr(eq_id, X_train, y_train):
                 "python"    : cand.to_python(),
                 "complexity": cand.complexity,
                 "rmse"      : None if not np.isfinite(cand_rmse) else cand_rmse,
+                "error"     : cand.error,
             }
             cand_infos.append(info)
 
@@ -166,7 +167,6 @@ def run_sr(eq_id, X_train, y_train):
         base["found_python"]  = best_cand.to_python()
         base["complexity"]    = best_cand.complexity
         base["rmse"]          = best_rmse_val if np.isfinite(best_rmse_val) else None
-        # best candidate の pareto 情報（先頭のみ = best）
         base["candidates"]    = cand_infos
 
         if np.isfinite(best_rmse_val) and best_rmse_val < RMSE_THRESHOLD:
@@ -189,8 +189,10 @@ def run_sr(eq_id, X_train, y_train):
 # ------------------------------------------------------------------
 
 def _fmt_rmse(v):
-    if v is None: return "N/A"
+    if v is None:
+        return "N/A"
     return f"{float(v):.3e}"
+
 
 def _status_icon(s):
     return {"ok": "✅", "partial": "🟡", "failed": "❌",
@@ -199,12 +201,12 @@ def _status_icon(s):
 
 
 def write_report(summary, report_path):
-    results      = summary.get("results", [])
-    total        = summary.get("total", 0)
-    ok_count     = summary.get("ok", 0)
-    skipped      = summary.get("skipped", 0)
-    total_elapsed= summary.get("total_elapsed_s", 0.0)
-    settings     = summary.get("settings", {})
+    results       = summary.get("results", [])
+    total         = summary.get("total", 0)
+    ok_count      = summary.get("ok", 0)
+    skipped       = summary.get("skipped", 0)
+    total_elapsed = summary.get("total_elapsed_s", 0.0)
+    settings      = summary.get("settings", {})
 
     status_counts = {}
     for r in results:
@@ -219,10 +221,10 @@ def write_report(summary, report_path):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     L = []
-    L.append("# EML-SR Feynman Equations 全式推定 (高精度設定) レポート")
+    L.append("# EML-SR Model First AI — Feynman Equations 全式推定レポート")
     L.append("")
     L.append(f"**生成日時:** {now_str}  ")
-    L.append(f"**ブランチ:** `20260521_claude_allfunc_estimate`  ")
+    L.append(f"**エンジン:** `eml-sr_model_first_AI` (Rust / PyO3)  ")
     L.append("")
     L.append("---")
     L.append("")
@@ -231,21 +233,21 @@ def write_report(summary, report_path):
     L.append("### 目的")
     L.append("")
     L.append(
-        "前回実験 (BEAM_WIDTH=300, N_SAMPLES=200) よりも大幅に高いパラメータ "
-        "(BEAM_WIDTH=1000, N_SAMPLES=750) を用い、より多くの Feynman 方程式を"
-        "データのみから回収できるかを検証する。"
-        "また、推定に失敗した数式についても eml-sr が出力した候補数式を記録し、"
-        "数学的な関係を考察する材料とする。"
+        "従来の Python 版 eml-sr (`sample_code/gh3_allfunc_moreestimate_sr.py`) と同一の"
+        "ハイパーパラメータ (BEAM_WIDTH=1000, N_SAMPLES=750, MAX_COMPLEXITY=6) を用い、"
+        "新モデル **eml-sr_model_first_AI** により Feynman 方程式ベンチマークを実行する。"
+        "従来実装との回収率・実行時間・出力数式の差異を比較可能な形式で記録する。"
     )
     L.append("")
     L.append("### 実験設定")
     L.append("")
-    L.append("| パラメータ | 値 | 前回比 |")
-    L.append("|-----------|-----|--------|")
-    L.append(f"| N_SAMPLES | {settings.get('N_SAMPLES')} | 200 → 750 (+275%) |")
-    L.append(f"| BEAM_WIDTH | {settings.get('BEAM_WIDTH')} | 300 → 1000 (+233%) |")
-    L.append(f"| MAX_COMPLEXITY | {settings.get('MAX_COMPLEXITY')} | 変更なし |")
-    L.append(f"| RMSE 閾値 (ok) | {settings.get('RMSE_THRESHOLD')} | 変更なし |")
+    L.append("| パラメータ | 値 | 備考 |")
+    L.append("|-----------|-----|------|")
+    L.append(f"| N_SAMPLES | {settings.get('N_SAMPLES')} | 従来実験と同一 |")
+    L.append(f"| BEAM_WIDTH | {settings.get('BEAM_WIDTH')} | 従来実験と同一 |")
+    L.append(f"| MAX_COMPLEXITY | {settings.get('MAX_COMPLEXITY')} | 従来実験と同一 |")
+    L.append(f"| RMSE 閾値 (ok) | {settings.get('RMSE_THRESHOLD')} | 従来実験と同一 |")
+    L.append(f"| RMSE 閾値 (partial) | {settings.get('RMSE_PARTIAL')} | 従来実験と同一 |")
     L.append(f"| 合計実行時間 | {total_elapsed:.0f}s ({total_elapsed/60:.1f}min) | — |")
     L.append("")
     L.append("---")
@@ -257,37 +259,36 @@ def write_report(summary, report_path):
     L.append(f"| 対象方程式数 | {total} |")
     L.append(f"| ✅ 回収成功 (RMSE < 1e-4) | {ok_count} ({ok_rate:.1f}%) |")
     L.append(f"| 🟡 部分的回収 (RMSE < 1e-2) | {partial_count} ({partial_count/total*100:.1f}%) |")
-    L.append(f"| ❌ 失敗 | {status_counts.get('failed',0)} |")
+    L.append(f"| ❌ 失敗 | {status_counts.get('failed', 0)} |")
     L.append(f"| ⏭️ スキップ | {skipped} |")
-    L.append(f"| **成功+部分合計** | **{ok_count+partial_count} ({ok_partial_rate:.1f}%)** |")
+    L.append(f"| **成功+部分合計** | **{ok_count + partial_count} ({ok_partial_rate:.1f}%)** |")
     L.append("")
     L.append("---")
     L.append("")
 
-    # ---- 詳細テーブル ----
     L.append("## 3. 各方程式の詳細結果")
     L.append("")
-    L.append("| # | 式ID | 変数数 | ステータス | RMSE | 複雑度 | eml-sr 出力 | 時間(s) |")
-    L.append("|---|------|--------|------------|------|--------|-------------|---------|")
+    L.append("| # | 式ID | 変数数 | ステータス | RMSE | 複雑度 | 発見式 | 時間(s) |")
+    L.append("|---|------|--------|------------|------|--------|--------|---------|")
 
     for r in results:
-        idx     = r.get("index","?")
-        eq_id   = r.get("eq_id","?")
-        n_vars  = r.get("n_vars","?")
-        status  = r.get("status","unknown")
+        idx     = r.get("index", "?")
+        eq_id   = r.get("eq_id", "?")
+        n_vars  = r.get("n_vars", "?")
+        status  = r.get("status", "unknown")
         icon    = _status_icon(status)
         rmse_s  = _fmt_rmse(r.get("rmse"))
-        cplx    = r.get("complexity","N/A")
+        cplx    = r.get("complexity", "N/A")
         formula = str(r.get("found_formula") or "N/A")
-        if len(formula) > 55: formula = formula[:52] + "..."
-        elapsed = r.get("elapsed_s",0)
+        if len(formula) > 55:
+            formula = formula[:52] + "..."
+        elapsed = r.get("elapsed_s", 0)
         L.append(f"| {idx} | `{eq_id}` | {n_vars} | {icon} {status} | {rmse_s} | {cplx} | `{formula}` | {elapsed:.1f} |")
 
     L.append("")
     L.append("---")
     L.append("")
 
-    # ---- 成功した方程式 ----
     L.append("## 4. 回収成功した方程式の詳細")
     L.append("")
     ok_results = [r for r in results if r.get("status") == "ok"]
@@ -295,13 +296,13 @@ def write_report(summary, report_path):
         for r in ok_results:
             L.append(f"### `{r['eq_id']}`")
             L.append("")
-            vn = ", ".join(r.get("var_names",[]))
+            vn = ", ".join(r.get("var_names", []))
             L.append(f"- **変数:** {vn}")
-            L.append(f"- **eml-sr 発見式:** `{r.get('found_formula','N/A')}`")
-            L.append(f"- **Python 表現:** `{r.get('found_python','N/A')}`")
+            L.append(f"- **発見式:** `{r.get('found_formula', 'N/A')}`")
+            L.append(f"- **Python 表現:** `{r.get('found_python', 'N/A')}`")
             L.append(f"- **RMSE:** {_fmt_rmse(r.get('rmse'))}")
-            L.append(f"- **複雑度:** {r.get('complexity','N/A')}")
-            L.append(f"- **実行時間:** {r.get('elapsed_s',0):.2f}s")
+            L.append(f"- **複雑度:** {r.get('complexity', 'N/A')}")
+            L.append(f"- **実行時間:** {r.get('elapsed_s', 0):.2f}s")
             L.append("")
     else:
         L.append("（成功した方程式はありませんでした）")
@@ -310,18 +311,17 @@ def write_report(summary, report_path):
     L.append("---")
     L.append("")
 
-    # ---- 部分的回収 ----
     L.append("## 5. 部分的回収の方程式")
     L.append("")
     partial_results = [r for r in results if r.get("status") == "partial"]
     if partial_results:
         for r in partial_results:
-            vn = ", ".join(r.get("var_names",[]))
+            vn = ", ".join(r.get("var_names", []))
             L.append(f"### `{r['eq_id']}`")
             L.append(f"- **変数:** {vn}")
-            L.append(f"- **eml-sr 発見式:** `{r.get('found_formula','N/A')}`")
+            L.append(f"- **発見式:** `{r.get('found_formula', 'N/A')}`")
             L.append(f"- **RMSE:** {_fmt_rmse(r.get('rmse'))}")
-            L.append(f"- **複雑度:** {r.get('complexity','N/A')}")
+            L.append(f"- **複雑度:** {r.get('complexity', 'N/A')}")
             L.append("")
     else:
         L.append("（部分的回収の方程式はありませんでした）")
@@ -330,65 +330,59 @@ def write_report(summary, report_path):
     L.append("---")
     L.append("")
 
-    # ---- 失敗した方程式（eml-sr 出力の一覧） ----
-    L.append("## 6. 失敗した方程式と eml-sr 出力数式")
+    L.append("## 6. 失敗した方程式と出力数式")
     L.append("")
     L.append(
         "以下は推定に失敗（RMSE >= 1e-4）した方程式の一覧である。"
-        "eml-sr が出力した数式（Pareto front の最良候補）を記録する。"
-        "これらの出力数式から数学的変換により正しい数式を導ける可能性がある。"
+        "Pareto front の最良候補を記録する。"
     )
     L.append("")
-    L.append("| # | 式ID | 変数 | RMSE | eml-sr 出力式 | eml-sr Python 表現 |")
-    L.append("|---|------|------|------|--------------|-------------------|")
+    L.append("| # | 式ID | 変数 | RMSE | 発見式 | Python 表現 |")
+    L.append("|---|------|------|------|--------|-------------|")
 
-    failed_results = [r for r in results if r.get("status") in ("failed", "error", "no_candidates", "prediction_failed")]
+    failed_results = [r for r in results if r.get("status") in (
+        "failed", "error", "no_candidates", "prediction_failed")]
     for r in failed_results:
-        idx     = r.get("index","?")
-        eq_id   = r.get("eq_id","?")
-        vnames  = ", ".join(r.get("var_names",[]))
+        idx     = r.get("index", "?")
+        eq_id   = r.get("eq_id", "?")
+        vnames  = ", ".join(r.get("var_names", []))
         rmse_s  = _fmt_rmse(r.get("rmse"))
         formula = str(r.get("found_formula") or "N/A")
         python  = str(r.get("found_python") or "N/A")
-        if len(formula) > 60: formula = formula[:57] + "..."
-        if len(python)  > 60: python  = python[:57]  + "..."
+        if len(formula) > 60:
+            formula = formula[:57] + "..."
+        if len(python) > 60:
+            python = python[:57] + "..."
         L.append(f"| {idx} | `{eq_id}` | {vnames} | {rmse_s} | `{formula}` | `{python}` |")
 
     L.append("")
     L.append("---")
     L.append("")
 
-    # ---- 失敗例の Pareto front 全候補 ----
     L.append("## 7. 失敗した方程式の Pareto Front 全候補")
     L.append("")
-    L.append(
-        "eml-sr は各実行で複数の候補（Pareto front）を返す。"
-        "以下に失敗した各方程式の全候補を示す。複雑度が低い候補ほど一般化しやすく、"
-        "最良の複雑度/精度バランスを持つ候補が「真の数式の部分構造」を含む可能性がある。"
-    )
-    L.append("")
-
     for r in failed_results:
-        eq_id = r.get("eq_id","?")
-        vnames = ", ".join(r.get("var_names",[]))
-        cands = r.get("all_candidates", r.get("candidates", []))
+        eq_id  = r.get("eq_id", "?")
+        vnames = ", ".join(r.get("var_names", []))
+        cands  = r.get("all_candidates", r.get("candidates", []))
         if not cands:
             continue
 
         L.append(f"### `{eq_id}` （変数: {vnames}）")
         L.append("")
-        L.append("| 複雑度 | RMSE | eml-sr 式 | Python 表現 |")
-        L.append("|--------|------|-----------|------------|")
+        L.append("| 複雑度 | RMSE | 式 | Python 表現 |")
+        L.append("|--------|------|-----|------------|")
         for c in sorted(cands, key=lambda x: x.get("complexity", 99)):
-            crmse   = _fmt_rmse(c.get("rmse"))
-            cformula= str(c.get("formula","N/A"))
-            cpython = str(c.get("python","N/A"))
-            if len(cformula) > 55: cformula = cformula[:52] + "..."
-            if len(cpython)  > 55: cpython  = cpython[:52]  + "..."
-            L.append(f"| {c.get('complexity','?')} | {crmse} | `{cformula}` | `{cpython}` |")
+            crmse    = _fmt_rmse(c.get("rmse"))
+            cformula = str(c.get("formula", "N/A"))
+            cpython  = str(c.get("python", "N/A"))
+            if len(cformula) > 55:
+                cformula = cformula[:52] + "..."
+            if len(cpython) > 55:
+                cpython = cpython[:52] + "..."
+            L.append(f"| {c.get('complexity', '?')} | {crmse} | `{cformula}` | `{cpython}` |")
         L.append("")
 
-    # ---- 変数数別成功率 ----
     L.append("---")
     L.append("")
     L.append("## 8. 変数数別の成功率")
@@ -396,7 +390,7 @@ def write_report(summary, report_path):
     var_stats = {}
     for r in results:
         nv = r.get("n_vars", 0)
-        st = r.get("status","unknown")
+        st = r.get("status", "unknown")
         if nv not in var_stats:
             var_stats[nv] = {"ok": 0, "partial": 0, "total": 0}
         var_stats[nv]["total"] += 1
@@ -419,46 +413,32 @@ def write_report(summary, report_path):
     L.append("")
     L.append("## 9. 考察")
     L.append("")
-    L.append("### 9.1 前回実験との比較")
+    L.append("### 9.1 従来 eml-sr 実験との比較")
     L.append("")
     L.append(
-        "BEAM_WIDTH を 300 → 1000、N_SAMPLES を 200 → 750 に増加させることで、"
-        "探索の多様性と数値的安定性が向上した。"
-        "特に 2〜3 変数の方程式においては、より精密な係数の推定が期待される。"
+        "従来実験 (`sample_code/allfunc_moreestimate_sr_report.md`) では "
+        "99式中 9式 (9.1%) を完全回収、部分回収含め 10式 (10.1%) であった。"
+        "本実験は同一データ・同一ハイパーパラメータで eml-sr_model_first_AI を適用し、"
+        "Rust 実装による速度・数値安定性・探索挙動の差異を評価する。"
     )
     L.append("")
-    L.append("### 9.2 EML 演算子の特性と失敗パターン")
+    L.append("### 9.2 EML 演算子と失敗パターン")
     L.append("")
     L.append(
-        "eml-sr の EML (Exponential-Modular-Logarithmic) 演算子は "
-        "`exp(a) - log(b)` 型の構造をコンパクトに表現できる。"
-        "しかし以下のパターンは複雑度 6 の範囲では依然として困難である：\n"
-        "- **Gaussian 型**: `exp(-θ²/2)` — 変数の二乗が指数内にある構造\n"
-        "- **相対論的因子**: `1/√(1-v²/c²)` — 差の二乗と平方根の組み合わせ\n"
-        "- **有理数係数**: `1/2`, `3/2` など — 標準定数セット外の係数\n"
-        "- **4変数以上**: 探索空間の指数的拡大により未探索領域が残る"
-    )
-    L.append("")
-    L.append("### 9.3 失敗例からの数学的推定の可能性")
-    L.append("")
-    L.append(
-        "セクション 7 に示した Pareto front の候補群は、正しい数式の部分構造を含む可能性がある。"
-        "例えば:\n"
-        "- 複雑度 1〜2 の候補が「最も影響力の大きい変数」を特定している場合がある\n"
-        "- 複雑度 3〜4 の候補が「正しい演算子の組み合わせ」の一部を捉えている場合がある\n"
-        "これらを出発点として、手動または半自動的に式を修正・拡張することで"
-        "正確な数式に到達できる可能性がある。"
+        "EML 演算子 $\\mathrm{EML}(a,b) = e^a - \\ln b$ は指数・対数構造をコンパクトに表現できるが、"
+        "Gaussian 型 ($\\exp(-\\theta^2/2)$)、相対論的因子 ($1/\\sqrt{1-v^2/c^2}$)、"
+        "有理数係数 ($1/2$, $3/2$)、4変数以上の式は複雑度 6 の範囲では依然困難である。"
     )
     L.append("")
     L.append(
         f"今回の実験では {total} 個の方程式に対して "
         f"**{ok_count} 式 ({ok_rate:.1f}%)** を完全回収し、"
-        f"部分的回収も含めると **{ok_count+partial_count} 式 ({ok_partial_rate:.1f}%)** となった。"
+        f"部分的回収も含めると **{ok_count + partial_count} 式 ({ok_partial_rate:.1f}%)** となった。"
     )
     L.append("")
     L.append("---")
     L.append("")
-    L.append("*本レポートは `gh3_allfunc_moreestimate_sr.py` により自動生成されました。*")
+    L.append("*本レポートは `feynman_eml_sr_model_first_AI.py` により自動生成されました。*")
     L.append("")
 
     os.makedirs(os.path.dirname(report_path), exist_ok=True)
@@ -473,12 +453,23 @@ def write_report(summary, report_path):
 # ------------------------------------------------------------------
 
 def main():
+    limit = None
+    if len(sys.argv) > 1:
+        try:
+            limit = int(sys.argv[1])
+        except ValueError:
+            pass
+
     print("=" * 62)
-    print("  EML-SR: Feynman Equations - High-Precision Estimation")
+    print("  EML-SR Model First AI: Feynman Equations")
     print(f"  BEAM_WIDTH={BEAM_WIDTH}  N_SAMPLES={N_SAMPLES}  MAX_COMPLEXITY={MAX_COMPLEXITY}")
+    if limit:
+        print(f"  LIMIT={limit} equations (debug mode)")
     print("=" * 62)
 
     equations = load_equations(CSV_PATH)
+    if limit:
+        equations = equations[:limit]
     print(f"[INFO] Loaded {len(equations)} equations from CSV")
 
     results     = []
@@ -495,7 +486,7 @@ def main():
         if len(y) < 10:
             print(f"  [SKIP] too few valid samples ({len(y)})")
             results.append({
-                "index": idx+1, "eq_id": eq_id,
+                "index": idx + 1, "eq_id": eq_id,
                 "n_vars": n_vars, "var_names": eq["var_names"],
                 "status": "skipped", "reason": "too_few_valid_samples",
                 "found_formula": None, "found_python": None,
@@ -504,12 +495,11 @@ def main():
             })
             continue
 
-        # NaN / Inf フィルタ
         mask = np.isfinite(y)
         if mask.sum() < 10:
             print(f"  [SKIP] too few finite y ({mask.sum()})")
             results.append({
-                "index": idx+1, "eq_id": eq_id,
+                "index": idx + 1, "eq_id": eq_id,
                 "n_vars": n_vars, "var_names": eq["var_names"],
                 "status": "skipped", "reason": "too_few_finite_y",
                 "found_formula": None, "found_python": None,
@@ -528,11 +518,29 @@ def main():
 
         rmse_val = result.get("rmse")
         rmse_str = f"{rmse_val:.3e}" if rmse_val is not None else "N/A"
-        print(f"  Found:  {result.get('found_formula','N/A')}")
+        print(f"  Found:  {result.get('found_formula', 'N/A')}")
         print(f"  RMSE:   {rmse_str}  Status: {result['status']}  Time: {result['elapsed_s']:.2f}s")
 
         if result["status"] == "ok":
             ok_count += 1
+
+        # 中間保存（長時間実行対策）
+        os.makedirs(os.path.dirname(RESULTS_PATH), exist_ok=True)
+        partial_summary = {
+            "total": len(equations),
+            "ok": ok_count,
+            "completed": idx + 1,
+            "settings": {
+                "N_SAMPLES": N_SAMPLES,
+                "MAX_COMPLEXITY": MAX_COMPLEXITY,
+                "BEAM_WIDTH": BEAM_WIDTH,
+                "RMSE_THRESHOLD": RMSE_THRESHOLD,
+                "RMSE_PARTIAL": RMSE_PARTIAL,
+            },
+            "results": results,
+        }
+        with open(RESULTS_PATH, "w", encoding="utf-8") as f:
+            json.dump(partial_summary, f, ensure_ascii=False, indent=2)
 
     total_elapsed = time.time() - total_start
 
@@ -540,7 +548,7 @@ def main():
         "total"          : len(equations),
         "ok"             : ok_count,
         "skipped"        : sum(1 for r in results if r.get("status") == "skipped"),
-        "failed"         : sum(1 for r in results if r.get("status") not in ("ok","skipped","partial")),
+        "failed"         : sum(1 for r in results if r.get("status") not in ("ok", "skipped", "partial")),
         "partial"        : sum(1 for r in results if r.get("status") == "partial"),
         "total_elapsed_s": total_elapsed,
         "settings"       : {
