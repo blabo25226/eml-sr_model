@@ -280,8 +280,9 @@ def write_report(summary, report_path):
     L.append(
         "精度改良版 **eml-sr_model_cursor** により Feynman 方程式ベンチマークを実行し、"
         "ベースライン **eml-sr_model_first_AI** (9式回収) を上回る完全回収数を目指す。"
-        "Square/Cube/制限付き Pow 演算子、複数 Param シード、真の LM 最適化、"
-        "complexity=7、refinement pass 等の改良を統合した評価である。"
+        "Square/Cube/制限付き Pow 演算子の追加、単一 Param シード＋末尾多スタート refinement、"
+        "真の Levenberg-Marquardt 最適化（BFS 内 25 反復・refinement 80 反復の二段構成）"
+        "等の改良を統合した評価である（探索設定は first_AI と同一の complexity=6, beam=1000）。"
     )
     L.append("")
     L.append("### 実験設定")
@@ -289,9 +290,9 @@ def write_report(summary, report_path):
     L.append("| パラメータ | 値 | 備考 |")
     L.append("|-----------|-----|------|")
     L.append(f"| N_SAMPLES | {settings.get('N_SAMPLES')} | first_AI と同一 |")
-    L.append(f"| BEAM_WIDTH | {settings.get('BEAM_WIDTH')} | cursor 専用 |")
-    L.append(f"| MAX_COMPLEXITY | {settings.get('MAX_COMPLEXITY')} | cursor 拡張 (first_AI=6) |")
-    L.append(f"| COMPLEXITY_PENALTY | {settings.get('COMPLEXITY_PENALTY')} | cursor 専用 |")
+    L.append(f"| BEAM_WIDTH | {settings.get('BEAM_WIDTH')} | first_AI と同一 |")
+    L.append(f"| MAX_COMPLEXITY | {settings.get('MAX_COMPLEXITY')} | first_AI と同一 |")
+    L.append(f"| COMPLEXITY_PENALTY | {settings.get('COMPLEXITY_PENALTY')} | cursor 専用 (first_AI=0.1) |")
     L.append(f"| RMSE 閾値 (ok) | {settings.get('RMSE_THRESHOLD')} | first_AI と同一 |")
     L.append(f"| RMSE 閾値 (partial) | {settings.get('RMSE_PARTIAL')} | first_AI と同一 |")
     L.append(f"| 合計実行時間 | {total_elapsed:.0f}s ({total_elapsed/60:.1f}min) | — |")
@@ -497,8 +498,8 @@ def write_report(summary, report_path):
     L.append(
         "Square/Cube 演算子は二乗・三乗構造の複雑度を削減し、"
         "制限付き Pow は指数定数の表現を可能にする。"
-        "complexity=7 と refinement pass は Gaussian 型や高次有理式の回収に寄与する可能性がある。"
-        "定数は数値近似 ($0.5$, $3.1$ 等) で合格判定 (RMSE のみ) とする。"
+        "真の LM 最適化（BFS 内 25 反復で候補を篩い分け、末尾 refinement で多スタート 80 反復の精密化）"
+        "は partial → ok への昇格に寄与する。定数は数値近似で合格判定 (RMSE のみ) とする。"
     )
     L.append("")
     L.append(

@@ -1,3 +1,20 @@
+## 2026/07/04
+
+### AI（エージェント）が行ったこと
+- **全99式 本番ベンチマーク完了**（`eml-sr_model_cursor`, release ビルド, MAX_COMPLEXITY=6, BEAM_WIDTH=1000, PENALTY=0.08, 約819分）
+  - **結果:** 完全回収 **13式 (13.1%)**、部分回収 3式、合計 16式 (16.2%)、スキップ5式、失敗78式
+  - **first_AI 比:** delta_ok = **+4**、回帰なし（lost_ok_ids = ∅、既存9式すべて維持）
+  - **新規回収4式:** `I.34.27`, `I.39.1`, `II.27.16`, `III.12.43`
+  - 新演算子 `Square` が `II.27.16`（$q^2$ 依存）・`II.27.18`（$\epsilon E^2$）の回収に直接寄与
+  - 出力: `results/eml_sr_model_cursor_feynman_results.json`, `texts/eml_sr_model_cursor_feynman_report.md`, `results/feynman_cursor_full.log`
+- レポート雛形の記述を Phase F 後の実設定（complexity=6, 単一Paramシード, LM 二段構成）に合わせて修正し、保存済み JSON から再生成
+- 目標達成: 最低基準（≥10, 回帰なし）および目標（≥12）を満たした。全成果を git commit → push（ユーザー許可済み）
+
+### ユーザーが行ったこと
+- 外出前に「99式計算完了後、レポート等を済ませて git push」を指示・許可（今回限りの push 承認）
+
+---
+
 ## 2026/07/03
 
 ### AI（エージェント）が行ったこと

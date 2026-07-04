@@ -1,17 +1,22 @@
 {
   "total": 99,
-  "ok": 12,
-  "completed": 87,
+  "ok": 13,
+  "skipped": 5,
+  "failed": 78,
+  "partial": 3,
+  "total_elapsed_s": 49172.873827934265,
   "comparison": {
     "baseline_ok_count": 9,
-    "delta_ok": 3,
+    "delta_ok": 4,
     "new_ok_ids": [
       "I.34.27",
       "I.39.1",
-      "II.27.16"
+      "II.27.16",
+      "III.12.43"
     ],
     "lost_ok_ids": []
   },
+  "smoke_mode": false,
   "settings": {
     "N_SAMPLES": 750,
     "MAX_COMPLEXITY": 6,
@@ -7944,6 +7949,1061 @@
         "mom",
         "B",
         "h"
+      ]
+    },
+    {
+      "eq_id": "III.8.54",
+      "status": "failed",
+      "found_formula": "Subtract(C, Inv(Plus(v_{0}, v_{1})))",
+      "found_python": "(p_{0})-((1/(v_{0})+(v_{1})))",
+      "rmse": 0.34973814485814747,
+      "complexity": 6,
+      "elapsed_s": 191.24442744255066,
+      "candidates": [
+        {
+          "formula": "Subtract(C, Inv(Plus(v_{0}, v_{1})))",
+          "python": "(p_{0})-((1/(v_{0})+(v_{1})))",
+          "complexity": 6,
+          "rmse": 0.34973814485814747,
+          "error": 0.3497381448581473
+        },
+        {
+          "formula": "Sqrt(EML(C, ArcSin(v_{0})))",
+          "python": "np.sqrt((np.exp(p_{0}) - np.log(np.arcsin(v_{0}))))",
+          "complexity": 5,
+          "rmse": 0.35108716675988044,
+          "error": 0.3510871667598802
+        },
+        {
+          "formula": "Inv(EML(C, v_{0}))",
+          "python": "(1/(np.exp(p_{0}) - np.log(v_{0})))",
+          "complexity": 4,
+          "rmse": 0.3517245173773076,
+          "error": 0.3517245173773072
+        },
+        {
+          "formula": "Square(Cos(C))",
+          "python": "((np.cos(p_{0}))**2)",
+          "complexity": 3,
+          "rmse": 0.3531362062368702,
+          "error": 0.3531362062368697
+        },
+        {
+          "formula": "Cos(C)",
+          "python": "np.cos(p_{0})",
+          "complexity": 2,
+          "rmse": 0.35313620623687014,
+          "error": 0.35313620623686975
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 0.633544088624603,
+          "error": 0.6335440886246033
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Subtract(C, Inv(Plus(v_{0}, v_{1})))",
+          "python": "(p_{0})-((1/(v_{0})+(v_{1})))",
+          "complexity": 6,
+          "rmse": 0.34973814485814747,
+          "error": 0.3497381448581473
+        },
+        {
+          "formula": "Sqrt(EML(C, ArcSin(v_{0})))",
+          "python": "np.sqrt((np.exp(p_{0}) - np.log(np.arcsin(v_{0}))))",
+          "complexity": 5,
+          "rmse": 0.35108716675988044,
+          "error": 0.3510871667598802
+        },
+        {
+          "formula": "Inv(EML(C, v_{0}))",
+          "python": "(1/(np.exp(p_{0}) - np.log(v_{0})))",
+          "complexity": 4,
+          "rmse": 0.3517245173773076,
+          "error": 0.3517245173773072
+        },
+        {
+          "formula": "Square(Cos(C))",
+          "python": "((np.cos(p_{0}))**2)",
+          "complexity": 3,
+          "rmse": 0.3531362062368702,
+          "error": 0.3531362062368697
+        },
+        {
+          "formula": "Cos(C)",
+          "python": "np.cos(p_{0})",
+          "complexity": 2,
+          "rmse": 0.35313620623687014,
+          "error": 0.35313620623686975
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 0.633544088624603,
+          "error": 0.6335440886246033
+        }
+      ],
+      "index": 88,
+      "csv_index": 88,
+      "n_vars": 3,
+      "var_names": [
+        "E_n",
+        "t",
+        "h"
+      ]
+    },
+    {
+      "eq_id": "III.9.52",
+      "status": "failed",
+      "found_formula": "Subtract(Square(Plus(v_{0}, v_{1})), v_{3})",
+      "found_python": "((((v_{0})+(v_{1}))**2))-(v_{3})",
+      "rmse": 12.567752516868156,
+      "complexity": 6,
+      "elapsed_s": 684.3006229400635,
+      "candidates": [
+        {
+          "formula": "Subtract(Square(Plus(v_{0}, v_{1})), v_{3})",
+          "python": "((((v_{0})+(v_{1}))**2))-(v_{3})",
+          "complexity": 6,
+          "rmse": 12.567752516868156,
+          "error": 12.567752516868154
+        },
+        {
+          "formula": "Square(Plus(v_{0}, v_{1}))",
+          "python": "(((v_{0})+(v_{1}))**2)",
+          "complexity": 4,
+          "rmse": 12.751015155303554,
+          "error": 12.751015155303552
+        },
+        {
+          "formula": "Plus(C, v_{1})",
+          "python": "(p_{0})+(v_{1})",
+          "complexity": 3,
+          "rmse": 14.30535938272301,
+          "error": 14.305359382723001
+        },
+        {
+          "formula": "Tan(C)",
+          "python": "np.tan(p_{0})",
+          "complexity": 2,
+          "rmse": 14.503715016313292,
+          "error": 14.503715016313278
+        },
+        {
+          "formula": "v_{5}",
+          "python": "v_{5}",
+          "complexity": 1,
+          "rmse": 19.18869295622109,
+          "error": 19.18869295622109
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Subtract(Square(Plus(v_{0}, v_{1})), v_{3})",
+          "python": "((((v_{0})+(v_{1}))**2))-(v_{3})",
+          "complexity": 6,
+          "rmse": 12.567752516868156,
+          "error": 12.567752516868154
+        },
+        {
+          "formula": "Square(Plus(v_{0}, v_{1}))",
+          "python": "(((v_{0})+(v_{1}))**2)",
+          "complexity": 4,
+          "rmse": 12.751015155303554,
+          "error": 12.751015155303552
+        },
+        {
+          "formula": "Plus(C, v_{1})",
+          "python": "(p_{0})+(v_{1})",
+          "complexity": 3,
+          "rmse": 14.30535938272301,
+          "error": 14.305359382723001
+        },
+        {
+          "formula": "Tan(C)",
+          "python": "np.tan(p_{0})",
+          "complexity": 2,
+          "rmse": 14.503715016313292,
+          "error": 14.503715016313278
+        },
+        {
+          "formula": "v_{5}",
+          "python": "v_{5}",
+          "complexity": 1,
+          "rmse": 19.18869295622109,
+          "error": 19.18869295622109
+        }
+      ],
+      "index": 89,
+      "csv_index": 89,
+      "n_vars": 6,
+      "var_names": [
+        "p_d",
+        "Ef",
+        "t",
+        "h",
+        "omega",
+        "omega_0"
+      ]
+    },
+    {
+      "index": 90,
+      "csv_index": 90,
+      "eq_id": "III.10.19",
+      "n_vars": 3,
+      "var_names": [
+        "mom",
+        "Bx",
+        "By"
+      ],
+      "status": "skipped",
+      "reason": "too_few_valid_samples",
+      "found_formula": null,
+      "found_python": null,
+      "rmse": null,
+      "complexity": null,
+      "elapsed_s": 0.0,
+      "candidates": [],
+      "all_candidates": []
+    },
+    {
+      "eq_id": "III.12.43",
+      "status": "ok",
+      "found_formula": "Times(v_{0}, Divide(v_{1}, Log(C)))",
+      "found_python": "(v_{0})*((v_{1}/np.log(p_{0})))",
+      "rmse": 1.451875739746619e-16,
+      "complexity": 6,
+      "elapsed_s": 237.45610666275024,
+      "candidates": [
+        {
+          "formula": "Times(v_{0}, Divide(v_{1}, Log(C)))",
+          "python": "(v_{0})*((v_{1}/np.log(p_{0})))",
+          "complexity": 6,
+          "rmse": 1.451875739746619e-16,
+          "error": 1.451875739746619e-16
+        },
+        {
+          "formula": "Times(v_{1}, Log(Sqrt(v_{0})))",
+          "python": "(v_{1})*(np.log(np.sqrt(v_{0})))",
+          "complexity": 5,
+          "rmse": 0.1894865983398919,
+          "error": 0.1894865983398919
+        },
+        {
+          "formula": "Times(v_{0}, Log(C))",
+          "python": "(v_{0})*(np.log(p_{0}))",
+          "complexity": 4,
+          "rmse": 0.6000538106852032,
+          "error": 0.6000538106852027
+        },
+        {
+          "formula": "Square(ArcTan(v_{0}))",
+          "python": "((np.arctan(v_{0}))**2)",
+          "complexity": 3,
+          "rmse": 0.6509885489880783,
+          "error": 0.6509885489880779
+        },
+        {
+          "formula": "Sqrt(v_{0})",
+          "python": "np.sqrt(v_{0})",
+          "complexity": 2,
+          "rmse": 0.6744747020121756,
+          "error": 0.6744747020121753
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 0.967428485091899,
+          "error": 0.9674284850918995
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(v_{0}, Divide(v_{1}, Log(C)))",
+          "python": "(v_{0})*((v_{1}/np.log(p_{0})))",
+          "complexity": 6,
+          "rmse": 1.451875739746619e-16,
+          "error": 1.451875739746619e-16
+        },
+        {
+          "formula": "Times(v_{1}, Log(Sqrt(v_{0})))",
+          "python": "(v_{1})*(np.log(np.sqrt(v_{0})))",
+          "complexity": 5,
+          "rmse": 0.1894865983398919,
+          "error": 0.1894865983398919
+        },
+        {
+          "formula": "Times(v_{0}, Log(C))",
+          "python": "(v_{0})*(np.log(p_{0}))",
+          "complexity": 4,
+          "rmse": 0.6000538106852032,
+          "error": 0.6000538106852027
+        },
+        {
+          "formula": "Square(ArcTan(v_{0}))",
+          "python": "((np.arctan(v_{0}))**2)",
+          "complexity": 3,
+          "rmse": 0.6509885489880783,
+          "error": 0.6509885489880779
+        },
+        {
+          "formula": "Sqrt(v_{0})",
+          "python": "np.sqrt(v_{0})",
+          "complexity": 2,
+          "rmse": 0.6744747020121756,
+          "error": 0.6744747020121753
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 0.967428485091899,
+          "error": 0.9674284850918995
+        }
+      ],
+      "index": 91,
+      "csv_index": 91,
+      "n_vars": 2,
+      "var_names": [
+        "n",
+        "h"
+      ]
+    },
+    {
+      "eq_id": "III.13.18",
+      "status": "failed",
+      "found_formula": "Times(v_{2}, Times(v_{0}, Cube(v_{1})))",
+      "found_python": "(v_{2})*((v_{0})*(((v_{1})**3)))",
+      "rmse": 333.06912321858744,
+      "complexity": 6,
+      "elapsed_s": 529.2923622131348,
+      "candidates": [
+        {
+          "formula": "Times(v_{2}, Times(v_{0}, Cube(v_{1})))",
+          "python": "(v_{2})*((v_{0})*(((v_{1})**3)))",
+          "complexity": 6,
+          "rmse": 333.06912321858744,
+          "error": 333.06912321858744
+        },
+        {
+          "formula": "Times(Cube(v_{1}), Square(v_{0}))",
+          "python": "(((v_{1})**3))*(((v_{0})**2))",
+          "complexity": 5,
+          "rmse": 393.6995598335941,
+          "error": 393.6995598335942
+        },
+        {
+          "formula": "Cube(Plus(C, v_{1}))",
+          "python": "(((p_{0})+(v_{1}))**3)",
+          "complexity": 4,
+          "rmse": 441.3298459498932,
+          "error": 441.32984594989284
+        },
+        {
+          "formula": "Plus(C, v_{1})",
+          "python": "(p_{0})+(v_{1})",
+          "complexity": 3,
+          "rmse": 531.399610164237,
+          "error": 531.3996101642366
+        },
+        {
+          "formula": "Exp(C)",
+          "python": "np.exp(p_{0})",
+          "complexity": 2,
+          "rmse": 532.0715955447711,
+          "error": 532.0715955447706
+        },
+        {
+          "formula": "v_{1}",
+          "python": "v_{1}",
+          "complexity": 1,
+          "rmse": 705.8636473915725,
+          "error": 705.8636473915723
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(v_{2}, Times(v_{0}, Cube(v_{1})))",
+          "python": "(v_{2})*((v_{0})*(((v_{1})**3)))",
+          "complexity": 6,
+          "rmse": 333.06912321858744,
+          "error": 333.06912321858744
+        },
+        {
+          "formula": "Times(Cube(v_{1}), Square(v_{0}))",
+          "python": "(((v_{1})**3))*(((v_{0})**2))",
+          "complexity": 5,
+          "rmse": 393.6995598335941,
+          "error": 393.6995598335942
+        },
+        {
+          "formula": "Cube(Plus(C, v_{1}))",
+          "python": "(((p_{0})+(v_{1}))**3)",
+          "complexity": 4,
+          "rmse": 441.3298459498932,
+          "error": 441.32984594989284
+        },
+        {
+          "formula": "Plus(C, v_{1})",
+          "python": "(p_{0})+(v_{1})",
+          "complexity": 3,
+          "rmse": 531.399610164237,
+          "error": 531.3996101642366
+        },
+        {
+          "formula": "Exp(C)",
+          "python": "np.exp(p_{0})",
+          "complexity": 2,
+          "rmse": 532.0715955447711,
+          "error": 532.0715955447706
+        },
+        {
+          "formula": "v_{1}",
+          "python": "v_{1}",
+          "complexity": 1,
+          "rmse": 705.8636473915725,
+          "error": 705.8636473915723
+        }
+      ],
+      "index": 92,
+      "csv_index": 92,
+      "n_vars": 4,
+      "var_names": [
+        "E_n",
+        "d",
+        "k",
+        "h"
+      ]
+    },
+    {
+      "eq_id": "III.14.14",
+      "status": "failed",
+      "found_formula": "Times(v_{2}, Times(v_{0}, v_{1}))",
+      "found_python": "(v_{2})*((v_{0})*(v_{1}))",
+      "rmse": 5.294037740232549,
+      "complexity": 5,
+      "elapsed_s": 468.8249044418335,
+      "candidates": [
+        {
+          "formula": "Times(v_{2}, Times(v_{0}, v_{1}))",
+          "python": "(v_{2})*((v_{0})*(v_{1}))",
+          "complexity": 5,
+          "rmse": 5.294037740232549,
+          "error": 5.2940377402325485
+        },
+        {
+          "formula": "Times(v_{0}, Square(v_{2}))",
+          "python": "(v_{0})*(((v_{2})**2))",
+          "complexity": 4,
+          "rmse": 5.618628364572792,
+          "error": 5.618628364572791
+        },
+        {
+          "formula": "Plus(v_{0}, v_{0})",
+          "python": "(v_{0})+(v_{0})",
+          "complexity": 3,
+          "rmse": 6.2820204462029805,
+          "error": 6.282020446202977
+        },
+        {
+          "formula": "Neg(C)",
+          "python": "(-p_{0})",
+          "complexity": 2,
+          "rmse": 6.673550658622975,
+          "error": 6.673550658622972
+        },
+        {
+          "formula": "v_{0}",
+          "python": "v_{0}",
+          "complexity": 1,
+          "rmse": 7.478862813592236,
+          "error": 7.478862813592236
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(v_{2}, Times(v_{0}, v_{1}))",
+          "python": "(v_{2})*((v_{0})*(v_{1}))",
+          "complexity": 5,
+          "rmse": 5.294037740232549,
+          "error": 5.2940377402325485
+        },
+        {
+          "formula": "Times(v_{0}, Square(v_{2}))",
+          "python": "(v_{0})*(((v_{2})**2))",
+          "complexity": 4,
+          "rmse": 5.618628364572792,
+          "error": 5.618628364572791
+        },
+        {
+          "formula": "Plus(v_{0}, v_{0})",
+          "python": "(v_{0})+(v_{0})",
+          "complexity": 3,
+          "rmse": 6.2820204462029805,
+          "error": 6.282020446202977
+        },
+        {
+          "formula": "Neg(C)",
+          "python": "(-p_{0})",
+          "complexity": 2,
+          "rmse": 6.673550658622975,
+          "error": 6.673550658622972
+        },
+        {
+          "formula": "v_{0}",
+          "python": "v_{0}",
+          "complexity": 1,
+          "rmse": 7.478862813592236,
+          "error": 7.478862813592236
+        }
+      ],
+      "index": 93,
+      "csv_index": 93,
+      "n_vars": 5,
+      "var_names": [
+        "I_0",
+        "q",
+        "Volt",
+        "kb",
+        "T"
+      ]
+    },
+    {
+      "eq_id": "III.15.12",
+      "status": "failed",
+      "found_formula": "Times(v_{0}, ArcCos(Inv(Neg(v_{2}))))",
+      "found_python": "(v_{0})*(np.arccos((1/(-v_{2}))))",
+      "rmse": 4.530440062306892,
+      "complexity": 6,
+      "elapsed_s": 298.9156219959259,
+      "candidates": [
+        {
+          "formula": "Times(v_{0}, ArcCos(Inv(Neg(v_{2}))))",
+          "python": "(v_{0})*(np.arccos((1/(-v_{2}))))",
+          "complexity": 6,
+          "rmse": 4.530440062306892,
+          "error": 4.530440062306893
+        },
+        {
+          "formula": "EML(Sqrt(v_{0}), Log(v_{2}))",
+          "python": "(np.exp(np.sqrt(v_{0})) - np.log(np.log(v_{2})))",
+          "complexity": 5,
+          "rmse": 4.573066306741745,
+          "error": 4.573066306741743
+        },
+        {
+          "formula": "Divide(v_{0}, Tan(C))",
+          "python": "(v_{0}/np.tan(p_{0}))",
+          "complexity": 4,
+          "rmse": 4.621472065007951,
+          "error": 4.621472065007947
+        },
+        {
+          "formula": "Plus(v_{0}, v_{0})",
+          "python": "(v_{0})+(v_{0})",
+          "complexity": 3,
+          "rmse": 4.62616242808927,
+          "error": 4.626162428089271
+        },
+        {
+          "formula": "Tan(C)",
+          "python": "np.tan(p_{0})",
+          "complexity": 2,
+          "rmse": 5.197826554047709,
+          "error": 5.197826554047705
+        },
+        {
+          "formula": "v_{0}",
+          "python": "v_{0}",
+          "complexity": 1,
+          "rmse": 5.759924205833398,
+          "error": 5.759924205833401
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(v_{0}, ArcCos(Inv(Neg(v_{2}))))",
+          "python": "(v_{0})*(np.arccos((1/(-v_{2}))))",
+          "complexity": 6,
+          "rmse": 4.530440062306892,
+          "error": 4.530440062306893
+        },
+        {
+          "formula": "EML(Sqrt(v_{0}), Log(v_{2}))",
+          "python": "(np.exp(np.sqrt(v_{0})) - np.log(np.log(v_{2})))",
+          "complexity": 5,
+          "rmse": 4.573066306741745,
+          "error": 4.573066306741743
+        },
+        {
+          "formula": "Divide(v_{0}, Tan(C))",
+          "python": "(v_{0}/np.tan(p_{0}))",
+          "complexity": 4,
+          "rmse": 4.621472065007951,
+          "error": 4.621472065007947
+        },
+        {
+          "formula": "Plus(v_{0}, v_{0})",
+          "python": "(v_{0})+(v_{0})",
+          "complexity": 3,
+          "rmse": 4.62616242808927,
+          "error": 4.626162428089271
+        },
+        {
+          "formula": "Tan(C)",
+          "python": "np.tan(p_{0})",
+          "complexity": 2,
+          "rmse": 5.197826554047709,
+          "error": 5.197826554047705
+        },
+        {
+          "formula": "v_{0}",
+          "python": "v_{0}",
+          "complexity": 1,
+          "rmse": 5.759924205833398,
+          "error": 5.759924205833401
+        }
+      ],
+      "index": 94,
+      "csv_index": 94,
+      "n_vars": 3,
+      "var_names": [
+        "U",
+        "k",
+        "d"
+      ]
+    },
+    {
+      "eq_id": "III.15.14",
+      "status": "partial",
+      "found_formula": "Times(v_{0}, Exp(Subtract(C, v_{2})))",
+      "found_python": "(v_{0})*(np.exp((p_{0})-(v_{2})))",
+      "rmse": 0.00881965698184899,
+      "complexity": 6,
+      "elapsed_s": 181.95734858512878,
+      "candidates": [
+        {
+          "formula": "Times(v_{0}, Exp(Subtract(C, v_{2})))",
+          "python": "(v_{0})*(np.exp((p_{0})-(v_{2})))",
+          "complexity": 6,
+          "rmse": 0.00881965698184899,
+          "error": 0.008819656981848984
+        },
+        {
+          "formula": "Cube(Inv(Plus(v_{1}, v_{2})))",
+          "python": "(((1/(v_{1})+(v_{2})))**3)",
+          "complexity": 5,
+          "rmse": 0.012481126616608116,
+          "error": 0.012481126616608112
+        },
+        {
+          "formula": "Exp(Subtract(C, v_{2}))",
+          "python": "np.exp((p_{0})-(v_{2}))",
+          "complexity": 4,
+          "rmse": 0.012647538214533136,
+          "error": 0.012647538214533122
+        },
+        {
+          "formula": "ArcCos(ArcSin(C))",
+          "python": "np.arccos(np.arcsin(p_{0}))",
+          "complexity": 3,
+          "rmse": 0.016324896985354522,
+          "error": 0.016324896985354505
+        },
+        {
+          "formula": "Exp(C)",
+          "python": "np.exp(p_{0})",
+          "complexity": 2,
+          "rmse": 0.016324896985354522,
+          "error": 0.016324896985354508
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 0.9900053888153321,
+          "error": 0.9900053888153325
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(v_{0}, Exp(Subtract(C, v_{2})))",
+          "python": "(v_{0})*(np.exp((p_{0})-(v_{2})))",
+          "complexity": 6,
+          "rmse": 0.00881965698184899,
+          "error": 0.008819656981848984
+        },
+        {
+          "formula": "Cube(Inv(Plus(v_{1}, v_{2})))",
+          "python": "(((1/(v_{1})+(v_{2})))**3)",
+          "complexity": 5,
+          "rmse": 0.012481126616608116,
+          "error": 0.012481126616608112
+        },
+        {
+          "formula": "Exp(Subtract(C, v_{2}))",
+          "python": "np.exp((p_{0})-(v_{2}))",
+          "complexity": 4,
+          "rmse": 0.012647538214533136,
+          "error": 0.012647538214533122
+        },
+        {
+          "formula": "ArcCos(ArcSin(C))",
+          "python": "np.arccos(np.arcsin(p_{0}))",
+          "complexity": 3,
+          "rmse": 0.016324896985354522,
+          "error": 0.016324896985354505
+        },
+        {
+          "formula": "Exp(C)",
+          "python": "np.exp(p_{0})",
+          "complexity": 2,
+          "rmse": 0.016324896985354522,
+          "error": 0.016324896985354508
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 0.9900053888153321,
+          "error": 0.9900053888153325
+        }
+      ],
+      "index": 95,
+      "csv_index": 95,
+      "n_vars": 3,
+      "var_names": [
+        "h",
+        "E_n",
+        "d"
+      ]
+    },
+    {
+      "eq_id": "III.15.27",
+      "status": "failed",
+      "found_formula": "Divide(Exp(EML(C, v_{2})), v_{1})",
+      "found_python": "(np.exp((np.exp(p_{0}) - np.log(v_{2})))/v_{1})",
+      "rmse": 1.4667419682423364,
+      "complexity": 6,
+      "elapsed_s": 307.7665238380432,
+      "candidates": [
+        {
+          "formula": "Divide(Exp(EML(C, v_{2})), v_{1})",
+          "python": "(np.exp((np.exp(p_{0}) - np.log(v_{2})))/v_{1})",
+          "complexity": 6,
+          "rmse": 1.4667419682423364,
+          "error": 1.4667419682423344
+        },
+        {
+          "formula": "Times(v_{0}, EML(C, v_{1}))",
+          "python": "(v_{0})*((np.exp(p_{0}) - np.log(v_{1})))",
+          "complexity": 5,
+          "rmse": 1.6533021024151375,
+          "error": 1.653302102415136
+        },
+        {
+          "formula": "Plus(v_{0}, Sin(v_{2}))",
+          "python": "(v_{0})+(np.sin(v_{2}))",
+          "complexity": 4,
+          "rmse": 1.8711602411683381,
+          "error": 1.8711602411683381
+        },
+        {
+          "formula": "Subtract(C, v_{1})",
+          "python": "(p_{0})-(v_{1})",
+          "complexity": 3,
+          "rmse": 2.1011596544252855,
+          "error": 2.1011596544252837
+        },
+        {
+          "formula": "v_{0}",
+          "python": "v_{0}",
+          "complexity": 1,
+          "rmse": 2.1426998739412007,
+          "error": 2.1426998739412
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Divide(Exp(EML(C, v_{2})), v_{1})",
+          "python": "(np.exp((np.exp(p_{0}) - np.log(v_{2})))/v_{1})",
+          "complexity": 6,
+          "rmse": 1.4667419682423364,
+          "error": 1.4667419682423344
+        },
+        {
+          "formula": "Times(v_{0}, EML(C, v_{1}))",
+          "python": "(v_{0})*((np.exp(p_{0}) - np.log(v_{1})))",
+          "complexity": 5,
+          "rmse": 1.6533021024151375,
+          "error": 1.653302102415136
+        },
+        {
+          "formula": "Plus(v_{0}, Sin(v_{2}))",
+          "python": "(v_{0})+(np.sin(v_{2}))",
+          "complexity": 4,
+          "rmse": 1.8711602411683381,
+          "error": 1.8711602411683381
+        },
+        {
+          "formula": "Subtract(C, v_{1})",
+          "python": "(p_{0})-(v_{1})",
+          "complexity": 3,
+          "rmse": 2.1011596544252855,
+          "error": 2.1011596544252837
+        },
+        {
+          "formula": "v_{0}",
+          "python": "v_{0}",
+          "complexity": 1,
+          "rmse": 2.1426998739412007,
+          "error": 2.1426998739412
+        }
+      ],
+      "index": 96,
+      "csv_index": 96,
+      "n_vars": 3,
+      "var_names": [
+        "alpha",
+        "n",
+        "d"
+      ]
+    },
+    {
+      "eq_id": "III.17.37",
+      "status": "failed",
+      "found_formula": "Times(Cos(v_{2}), Sqrt(Cube(v_{1})))",
+      "found_python": "(np.cos(v_{2}))*(np.sqrt(((v_{1})**3)))",
+      "rmse": 2.7026526429064432,
+      "complexity": 6,
+      "elapsed_s": 258.4191064834595,
+      "candidates": [
+        {
+          "formula": "Times(Cos(v_{2}), Sqrt(Cube(v_{1})))",
+          "python": "(np.cos(v_{2}))*(np.sqrt(((v_{1})**3)))",
+          "complexity": 6,
+          "rmse": 2.7026526429064432,
+          "error": 2.702652642906443
+        },
+        {
+          "formula": "Times(v_{1}, Tan(Cos(v_{2})))",
+          "python": "(v_{1})*(np.tan(np.cos(v_{2})))",
+          "complexity": 5,
+          "rmse": 3.040913908383019,
+          "error": 3.0409139083830174
+        },
+        {
+          "formula": "Times(v_{1}, Cos(v_{2}))",
+          "python": "(v_{1})*(np.cos(v_{2}))",
+          "complexity": 4,
+          "rmse": 3.4092354757168515,
+          "error": 3.4092354757168515
+        },
+        {
+          "formula": "Log(Tan(v_{2}))",
+          "python": "np.log(np.tan(v_{2}))",
+          "complexity": 3,
+          "rmse": 4.218993611823576,
+          "error": 4.218993611823576
+        },
+        {
+          "formula": "Cos(v_{2})",
+          "python": "np.cos(v_{2})",
+          "complexity": 2,
+          "rmse": 4.468938339904102,
+          "error": 4.468938339904104
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 5.24351119500927,
+          "error": 5.243511195009272
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(Cos(v_{2}), Sqrt(Cube(v_{1})))",
+          "python": "(np.cos(v_{2}))*(np.sqrt(((v_{1})**3)))",
+          "complexity": 6,
+          "rmse": 2.7026526429064432,
+          "error": 2.702652642906443
+        },
+        {
+          "formula": "Times(v_{1}, Tan(Cos(v_{2})))",
+          "python": "(v_{1})*(np.tan(np.cos(v_{2})))",
+          "complexity": 5,
+          "rmse": 3.040913908383019,
+          "error": 3.0409139083830174
+        },
+        {
+          "formula": "Times(v_{1}, Cos(v_{2}))",
+          "python": "(v_{1})*(np.cos(v_{2}))",
+          "complexity": 4,
+          "rmse": 3.4092354757168515,
+          "error": 3.4092354757168515
+        },
+        {
+          "formula": "Log(Tan(v_{2}))",
+          "python": "np.log(np.tan(v_{2}))",
+          "complexity": 3,
+          "rmse": 4.218993611823576,
+          "error": 4.218993611823576
+        },
+        {
+          "formula": "Cos(v_{2})",
+          "python": "np.cos(v_{2})",
+          "complexity": 2,
+          "rmse": 4.468938339904102,
+          "error": 4.468938339904104
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 5.24351119500927,
+          "error": 5.243511195009272
+        }
+      ],
+      "index": 97,
+      "csv_index": 97,
+      "n_vars": 3,
+      "var_names": [
+        "beta",
+        "alpha",
+        "theta"
+      ]
+    },
+    {
+      "index": 98,
+      "csv_index": 98,
+      "eq_id": "III.19.51",
+      "n_vars": 4,
+      "var_names": [
+        "m",
+        "q",
+        "h",
+        "n"
+      ],
+      "status": "skipped",
+      "reason": "too_few_valid_samples",
+      "found_formula": null,
+      "found_python": null,
+      "rmse": null,
+      "complexity": null,
+      "elapsed_s": 0.0,
+      "candidates": [],
+      "all_candidates": []
+    },
+    {
+      "eq_id": "III.21.20",
+      "status": "failed",
+      "found_formula": "Divide(Log(C), Divide(v_{3}, v_{1}))",
+      "found_python": "(np.log(p_{0})/(v_{3}/v_{1}))",
+      "rmse": 6.818883278074875,
+      "complexity": 6,
+      "elapsed_s": 448.6434712409973,
+      "candidates": [
+        {
+          "formula": "Divide(Log(C), Divide(v_{3}, v_{1}))",
+          "python": "(np.log(p_{0})/(v_{3}/v_{1}))",
+          "complexity": 6,
+          "rmse": 6.818883278074875,
+          "error": 6.818883278074868
+        },
+        {
+          "formula": "Times(v_{2}, Subtract(v_{3}, C))",
+          "python": "(v_{2})*((v_{3})-(p_{0}))",
+          "complexity": 5,
+          "rmse": 7.254494410559455,
+          "error": 7.254494410559449
+        },
+        {
+          "formula": "Neg(Times(v_{1}, v_{2}))",
+          "python": "(-(v_{1})*(v_{2}))",
+          "complexity": 4,
+          "rmse": 7.773111116580589,
+          "error": 7.773111116580592
+        },
+        {
+          "formula": "Cube(ArcSin(v_{1}))",
+          "python": "((np.arcsin(v_{1}))**3)",
+          "complexity": 3,
+          "rmse": 9.170873498077999,
+          "error": 9.170873498078
+        },
+        {
+          "formula": "Neg(C)",
+          "python": "(-p_{0})",
+          "complexity": 2,
+          "rmse": 9.693045918898632,
+          "error": 9.693045918898624
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 15.405813217072312,
+          "error": 15.405813217072318
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Divide(Log(C), Divide(v_{3}, v_{1}))",
+          "python": "(np.log(p_{0})/(v_{3}/v_{1}))",
+          "complexity": 6,
+          "rmse": 6.818883278074875,
+          "error": 6.818883278074868
+        },
+        {
+          "formula": "Times(v_{2}, Subtract(v_{3}, C))",
+          "python": "(v_{2})*((v_{3})-(p_{0}))",
+          "complexity": 5,
+          "rmse": 7.254494410559455,
+          "error": 7.254494410559449
+        },
+        {
+          "formula": "Neg(Times(v_{1}, v_{2}))",
+          "python": "(-(v_{1})*(v_{2}))",
+          "complexity": 4,
+          "rmse": 7.773111116580589,
+          "error": 7.773111116580592
+        },
+        {
+          "formula": "Cube(ArcSin(v_{1}))",
+          "python": "((np.arcsin(v_{1}))**3)",
+          "complexity": 3,
+          "rmse": 9.170873498077999,
+          "error": 9.170873498078
+        },
+        {
+          "formula": "Neg(C)",
+          "python": "(-p_{0})",
+          "complexity": 2,
+          "rmse": 9.693045918898632,
+          "error": 9.693045918898624
+        },
+        {
+          "formula": "C",
+          "python": "p_{0}",
+          "complexity": 1,
+          "rmse": 15.405813217072312,
+          "error": 15.405813217072318
+        }
+      ],
+      "index": 99,
+      "csv_index": 99,
+      "n_vars": 4,
+      "var_names": [
+        "rho_c_0",
+        "q",
+        "A_vec",
+        "m"
       ]
     }
   ]
