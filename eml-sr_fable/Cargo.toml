@@ -1,0 +1,57 @@
+[package]
+name = "eml_sr_fable"
+version = "0.2.0"
+edition = "2021"
+description = "EML symbolic regression (fable edition) — enhanced operators and optimization"
+authors = ["Andrzej Odrzywolek <andrzej.odrzywolek@uj.edu.pl>", "Minh Dinh Khoi <minhdinhkhoi@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[lib]
+name = "eml_sr_fable"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "eml-sr-fable"
+path = "src/main.rs"
+
+[features]
+default = ["full-math"]
+full-math = []
+python = ["dep:pyo3", "dep:numpy"]
+serde  = ["dep:serde", "num-complex/serde"]
+
+[dependencies]
+num-complex = "0.4"
+rayon = "1"
+thiserror = "2"
+dashmap = "6"
+ordered-float = "4"
+chrono = "0.4"
+
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+optional = true
+
+[dependencies.pyo3]
+version = "0.22"
+features = ["extension-module", "generate-import-lib"]
+optional = true
+
+[dependencies.numpy]
+version = "0.22"
+optional = true
+
+[dev-dependencies]
+approx = "0.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "search_speed"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
