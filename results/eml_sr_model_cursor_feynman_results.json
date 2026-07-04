@@ -1,7 +1,7 @@
 {
   "total": 99,
   "ok": 12,
-  "completed": 86,
+  "completed": 87,
   "comparison": {
     "baseline_ok_count": 9,
     "delta_ok": 3,
@@ -7867,6 +7867,83 @@
         "omega",
         "kb",
         "T"
+      ]
+    },
+    {
+      "eq_id": "III.7.38",
+      "status": "failed",
+      "found_formula": "Times(v_{1}, Divide(Tan(C), v_{2}))",
+      "found_python": "(v_{1})*((np.tan(p_{0})/v_{2}))",
+      "rmse": 20.91330953142408,
+      "complexity": 6,
+      "elapsed_s": 447.41482377052307,
+      "candidates": [
+        {
+          "formula": "Times(v_{1}, Divide(Tan(C), v_{2}))",
+          "python": "(v_{1})*((np.tan(p_{0})/v_{2}))",
+          "complexity": 6,
+          "rmse": 20.91330953142408,
+          "error": 20.913309531424062
+        },
+        {
+          "formula": "Square(Plus(v_{0}, v_{1}))",
+          "python": "(((v_{0})+(v_{1}))**2)",
+          "complexity": 4,
+          "rmse": 26.842515225473555,
+          "error": 26.842515225473544
+        },
+        {
+          "formula": "Cube(v_{0})",
+          "python": "((v_{0})**3)",
+          "complexity": 2,
+          "rmse": 35.5469843137483,
+          "error": 35.54698431374831
+        },
+        {
+          "formula": "v_{0}",
+          "python": "v_{0}",
+          "complexity": 1,
+          "rmse": 56.491721512398826,
+          "error": 56.49172151239882
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(v_{1}, Divide(Tan(C), v_{2}))",
+          "python": "(v_{1})*((np.tan(p_{0})/v_{2}))",
+          "complexity": 6,
+          "rmse": 20.91330953142408,
+          "error": 20.913309531424062
+        },
+        {
+          "formula": "Square(Plus(v_{0}, v_{1}))",
+          "python": "(((v_{0})+(v_{1}))**2)",
+          "complexity": 4,
+          "rmse": 26.842515225473555,
+          "error": 26.842515225473544
+        },
+        {
+          "formula": "Cube(v_{0})",
+          "python": "((v_{0})**3)",
+          "complexity": 2,
+          "rmse": 35.5469843137483,
+          "error": 35.54698431374831
+        },
+        {
+          "formula": "v_{0}",
+          "python": "v_{0}",
+          "complexity": 1,
+          "rmse": 56.491721512398826,
+          "error": 56.49172151239882
+        }
+      ],
+      "index": 87,
+      "csv_index": 87,
+      "n_vars": 3,
+      "var_names": [
+        "mom",
+        "B",
+        "h"
       ]
     }
   ]
