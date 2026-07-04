@@ -1,3 +1,31 @@
+## 2026/07/04 (eml-sr_fable 開発)
+
+### AI（エージェント・Claude Fable）が行ったこと
+- `eml-sr_fable/plan_eml-sr_fable.md` の指示書を読み込み、cursor 版のコード・レポート・失敗パターンを精査して**作業計画書を作成** → ユーザー承諾後にコーディング開始
+- **`eml-sr_model_cursor/` を `eml-sr_fable/` へフォーク**し、クレート名・Python モジュール名を `eml_sr_fable` にリネーム。計画書を `eml-sr_fable/WORK_PLAN.md` として保存
+- **Stage A: べき単項式ソルバーを新規実装**（`src/engine/powerlaw.rs`）
+  - 変換ターゲット {y, log y, 1/y, 1/y², y²} × (log 空間最小二乗 + OLS 辞書追跡 + バックフィッティング + 後方剪定)
+  - 開発中に発見した問題を順次修正: OMP の妥協列問題 → OLS 化、係数二重適用バグ、定数シード戦略（あり/なし両方を試行）、整数指数辞書の追加（x1y1+x2y2+x3y3 型に決定的）
+- **Stage B: ビームサーチを改良**（`src/engine/bfs.rs` 全面改修）
+  - アフィンスケーリング採点（min_{a,b} RMSE(y, a·f+b) 閉形式）、アフィン同値クラスのビーム占有制限、早期終了、決定的サブサンプル評価、式あたり時間予算、定数スナップ（整数・分数・π倍数, `optimizer.rs`）
+- **Stage C: 乗法分解を新規実装**（`src/engine/fable.rs`）: 単項式ホワイトナーで割った比のビームサーチ → 積として合成。3 段を統合する `run_fable` パイプラインを構築
+- **バグ修正**: `to_python()` の演算子優先順位（Divide/Inv/Neg、cursor から継承）、最適化定数が `p_{0}` のまま出力される問題（数値埋め込みに変更）
+- `cargo test` 全通過（powerlaw 単体テスト 5 件追加）、maturin で wheel ビルド
+- テストスクリプト作成: `src/feynman_eml_sr_fable_test1.py`（BEAM=1000, N=750, CPLX=6, 時間予算110s/式）、`src/feynman_eml_sr_fable_test2.py`（緩和条件 BEAM=2000, N=1500, CPLX=8, 600s/式, 高性能PC用）。シードは cursor と同一の 42+行番号で固定
+- スモーク 3 式（I.12.1/I.12.5/I.14.3）: **3/3 回収、計 0.2 秒**（cursor は同 3 式で約 58 分）
+- **全 99 式 1.test 本番ベンチマーク完了**（コンテナ再起動により 1 回中断 → 再実行）
+  - **結果: 完全回収 63式 (63.6%)、部分回収 10式、合計 73式 (73.7%)、失敗 21式、スキップ 5式**
+  - **総実行時間 19.0 分**（cursor: 819 分の約 1/43）、1 式あたり中央値 1.1 秒
+  - **first_AI 比 delta_ok = +54、cursor 比 delta_ok = +50、回帰ゼロ**（lost_ok_ids = ∅）
+  - 出力: `results/eml_sr_fable_feynman_test1_results.json`, `texts/eml_sr_fable_feynman_test1_report.md`, `results/feynman_fable_test1.log`
+- 成果物を git commit → push（ブランチ `claude/eml-sr-fable-algorithm-7w8j49`）、PR #1 を作成
+
+### ユーザーが行ったこと
+- eml-sr_fable の作業指示書を提示し、作業計画書を承諾
+- PR #1 を draft からレビュー可能状態に変更
+
+---
+
 ## 2026/07/04
 
 ### AI（エージェント）が行ったこと
