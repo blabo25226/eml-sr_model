@@ -1,0 +1,23 @@
+==============================================================
+  EML-SR Fable: Feynman Equations  [1.test_v3]
+  BEAM_WIDTH=1000  N_SAMPLES=750  MAX_COMPLEXITY=6
+==============================================================
+[INFO] Running 99 equations
+
+[001/99] I.6.2a  (vars=1)
+  Found:  Exp(Plus(-0.9189385332046665, Times(-0.5000000000000014, Square(v_{0}))))
+  RMSE:   3.667e-16  Status: ok  Time: 0.16s
+
+[002/99] I.6.2  (vars=2)
+  Found:  Exp(Plus(Plus(-0.9189385332046608, Times(-0.5000000000000056, Divide(Square(v_{1}), Squ...
+  RMSE:   9.029e-16  Status: ok  Time: 0.36s
+
+[003/99] I.6.2b  (vars=3)
+  Found:  Exp(Plus(Plus(-0.9189385332046839, Times(Times(-0.49999999999999023, Inv(Square(v_{0}))...
+  RMSE:   1.139e-15  Status: ok  Time: 1.00s
+
+[004/99] I.8.14  (vars=4)
+  Found:  Sqrt(Plus(Plus(Times(Times(0.000000000000000023852447794681098, Divide(Times(Square(v_{...
+  RMSE:   2.259e-15  Status: ok  Time: 5.84s
+
+[005/99] I.9.18  (vars=9)
