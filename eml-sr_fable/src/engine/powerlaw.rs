@@ -419,15 +419,19 @@ fn build_feature_dictionary(d: usize, usable: &[usize], size_limit: usize) -> Ve
             features.push(Feature::CosDiff(i, j));
             features.push(Feature::CosProd(i, j));
             features.push(Feature::SinProd(i, j));
+            features.push(Feature::Cos2Prod(i, j));
+            features.push(Feature::Sin2Prod(i, j));
         }
     }
     if features.is_empty() {
         return Vec::new();
     }
 
-    // Pick the richest monomial configuration that fits the budget.
+    // Pick the richest monomial configuration that fits the budget. Halves
+    // come first: interference terms like sqrt(I1)*sqrt(I2)*cos(delta) need
+    // fractional exponents next to the feature factor.
     const CONFIGS: &[(&[f64], usize)] = &[
-        (&[-3.0, -2.0, -1.0, 1.0, 2.0, 3.0], 3),
+        (&[-2.0, -1.0, -0.5, 0.5, 1.0, 2.0], 3),
         (&[-2.0, -1.0, 1.0, 2.0], 3),
         (&[-2.0, -1.0, 1.0, 2.0], 2),
         (&[-1.0, 1.0], 3),
@@ -606,7 +610,7 @@ fn pursue_dictionary(
     // With `seed_constant`, the constant column is pre-selected: for a
     // near-constant target the first free pick otherwise locks onto an
     // arbitrary smooth monotone column.
-    let select = |seed_constant: bool| -> Vec<usize> {
+    let select = |seed_constant: bool, forced_first: Option<usize>| -> Vec<usize> {
         let mut ortho_basis: Vec<Vec<f64>> = Vec::new();
         let mut residual = sub_target.clone();
         let mut chosen: Vec<usize> = Vec::new();
@@ -622,6 +626,34 @@ fn pursue_dictionary(
                 ortho_basis.push(qn);
                 chosen.push(0);
                 current_rmse = rms(&residual);
+            }
+        }
+
+        // Optional forced first pick (multi-start escape from compromise
+        // columns that dominate the initial correlation ranking).
+        if let Some(idx) = forced_first {
+            if !chosen.contains(&idx) {
+                if let Some((col, norm)) = columns[idx].as_ref() {
+                    let mut q = col.clone();
+                    for b in &ortho_basis {
+                        let proj: f64 = col.iter().zip(b).map(|(a, x)| a * x).sum();
+                        for (qi, bi) in q.iter_mut().zip(b) {
+                            *qi -= proj * bi;
+                        }
+                    }
+                    let q_norm = q.iter().map(|v| v * v).sum::<f64>().sqrt();
+                    if q_norm > 1e-8 * norm && q_norm.is_finite() {
+                        let qn: Vec<f64> = q.iter().map(|v| v / q_norm).collect();
+                        let r_dot: f64 =
+                            residual.iter().zip(&qn).map(|(a, b)| a * b).sum();
+                        for (ri, bi) in residual.iter_mut().zip(&qn) {
+                            *ri -= r_dot * bi;
+                        }
+                        ortho_basis.push(qn);
+                        chosen.push(idx);
+                        current_rmse = rms(&residual);
+                    }
+                }
             }
         }
 
@@ -705,7 +737,7 @@ fn pursue_dictionary(
     // The initial greedy pick often locks onto a "compromise" column;
     // swapping columns one at a time escapes it.
     let backfit = |mut chosen: Vec<usize>| -> Vec<usize> {
-        for _pass in 0..3 {
+        for _pass in 0..6 {
             if deadline.map_or(false, |dl| Instant::now() >= dl) {
                 break;
             }
@@ -852,17 +884,53 @@ fn pursue_dictionary(
     // Try both seeding strategies and keep every distinct outcome: sums of
     // structural terms favor the unseeded start, near-constant targets
     // (offsets, Lorentz-style 1 - x) need the constant-seeded start.
+    // For small dictionaries, additionally multi-start on the top initial
+    // correlation columns: the greedy first pick sometimes locks onto a
+    // "compromise" column (e.g. sqrt(I1*I2) for I1 + I2 + interference)
+    // that single-column backfitting cannot undo.
+    let mut starts: Vec<Option<usize>> = vec![None];
+    if dictionary.len() <= 20_000 {
+        let mut ranking: Vec<(usize, f64)> = columns
+            .par_iter()
+            .enumerate()
+            .filter_map(|(idx, c)| {
+                let (col, norm) = c.as_ref()?;
+                let dot: f64 = col.iter().zip(&sub_target).map(|(a, b)| a * b).sum();
+                let score = (dot / norm).abs();
+                if score.is_finite() {
+                    Some((idx, score))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        starts.extend(ranking.into_iter().take(4).map(|(idx, _)| Some(idx)));
+    }
+
     let mut results: Vec<Vec<Term>> = Vec::new();
+    let mut seen_supports: Vec<Vec<usize>> = Vec::new();
     for seed_constant in [false, true] {
-        let chosen = select(seed_constant);
-        if chosen.is_empty() {
-            continue;
-        }
-        let chosen = backfit(chosen);
-        if let Some((pruned, fallback)) = finalize(&chosen) {
-            results.push(pruned);
-            if let Some(unpruned) = fallback {
-                results.push(unpruned);
+        for &forced in &starts {
+            if deadline.map_or(false, |dl| Instant::now() >= dl) {
+                break;
+            }
+            let chosen = select(seed_constant, forced);
+            if chosen.is_empty() {
+                continue;
+            }
+            let chosen = backfit(chosen);
+            let mut support = chosen.clone();
+            support.sort_unstable();
+            if seen_supports.contains(&support) {
+                continue;
+            }
+            seen_supports.push(support);
+            if let Some((pruned, fallback)) = finalize(&chosen) {
+                results.push(pruned);
+                if let Some(unpruned) = fallback {
+                    results.push(unpruned);
+                }
             }
         }
     }
@@ -877,8 +945,14 @@ fn transform_target(t: Transform, ys_abs: &[f64]) -> Option<Vec<f64>> {
     if !max_abs.is_finite() || max_abs <= 0.0 {
         return None;
     }
-    let needs_nonzero = !matches!(t, Transform::Id);
+    // Only the reciprocal transforms blow up near zero. Log handles tiny
+    // positive values fine — exponential laws legitimately span dozens of
+    // orders of magnitude (e.g. n0*exp(-m*g*x/(kb*T)) over wide ranges).
+    let needs_nonzero = matches!(t, Transform::InvY | Transform::InvY2);
     if needs_nonzero && min_abs < 1e-12 * max_abs {
+        return None;
+    }
+    if matches!(t, Transform::Log) && min_abs < 1e-300 {
         return None;
     }
     let vals: Vec<f64> = match t {
@@ -1442,3 +1516,4 @@ mod feature_tests {
         assert!(err < 1e-8 * scale, "error too large: {err}");
     }
 }
+
