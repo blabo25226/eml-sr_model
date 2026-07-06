@@ -114,6 +114,7 @@ impl PySearcher {
         snap_constants=true,
         powerlaw_stage=true,
         ratio_search=true,
+        rational_stage=true,
         affine_scaling=true,
         max_boost_terms=6,
         verbose=true,
@@ -130,6 +131,7 @@ impl PySearcher {
         snap_constants: bool,
         powerlaw_stage: bool,
         ratio_search: bool,
+        rational_stage: bool,
         affine_scaling: bool,
         max_boost_terms: usize,
         verbose: bool,
@@ -145,6 +147,7 @@ impl PySearcher {
         config.snap_constants = snap_constants;
         config.powerlaw_stage = powerlaw_stage;
         config.ratio_search = ratio_search;
+        config.rational_stage = rational_stage;
         config.affine_scaling = affine_scaling;
         config.max_boost_terms = max_boost_terms;
         config.verbose = verbose;

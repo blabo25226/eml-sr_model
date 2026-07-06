@@ -208,8 +208,33 @@ pub fn run_fable(
         }
     }
 
+    // ---- Stage A2: rational-function fit y ~= P(x)/Q(x) ----
+    let mut rational_solved = false;
+    if config.rational_stage && !ratio_solved {
+        let t0 = Instant::now();
+        let r_deadline = Some(
+            deadline
+                .unwrap_or(t0 + Duration::from_secs(25))
+                .min(t0 + Duration::from_secs(25)),
+        );
+        let r_fits = powerlaw::run_rational(inputs, ys, config, &registry, r_deadline);
+        if config.verbose && !r_fits.is_empty() {
+            println!(
+                "[EML-SR-Fable] Rational stage produced {} candidates (best RMSE {:.3e}).",
+                r_fits.len(),
+                r_fits[0].error
+            );
+        }
+        for fit in r_fits {
+            if solved(fit.error) {
+                rational_solved = true;
+            }
+            pool.push((fit.error, fit.expression));
+        }
+    }
+
     // ---- Stage B: plain beam search on the raw target ----
-    if !ratio_solved {
+    if !ratio_solved && !rational_solved {
         let mut sub_config = config.clone();
         sub_config.verbose = config.verbose;
         match bfs::run_bfs_front(inputs, ys, &sub_config, deadline, &registry) {

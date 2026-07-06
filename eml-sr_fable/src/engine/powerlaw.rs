@@ -32,6 +32,9 @@ enum Transform {
     /// t = ln(1 + y), defined for y > -1. Linearizes `exp(m) - 1` shapes
     /// (diode law, Bose-Einstein denominators after whitening).
     Log1p,
+    /// t = ln((1 - y)/y), defined for y in (0, 1). Linearizes the logistic
+    /// family y = 1/(1 + exp(m)) common in biology/chemistry/economics.
+    Logit,
 }
 
 const TRANSFORMS: &[Transform] = &[
@@ -41,6 +44,7 @@ const TRANSFORMS: &[Transform] = &[
     Transform::InvY2,
     Transform::Y2,
     Transform::Log1p,
+    Transform::Logit,
 ];
 
 /// Solves a dense linear least-squares system via normal equations.
@@ -131,7 +135,8 @@ fn rmse(pred: &[f64], target: &[f64]) -> f64 {
     (acc / target.len() as f64).sqrt()
 }
 
-/// Variables usable inside fractional-power monomials (strictly positive data).
+/// Variables usable inside fractional-power monomials and Ln features
+/// (strictly positive data).
 fn usable_variables(inputs: &[Vec<f64>]) -> Vec<usize> {
     if inputs.is_empty() {
         return Vec::new();
@@ -139,6 +144,19 @@ fn usable_variables(inputs: &[Vec<f64>]) -> Vec<usize> {
     let d = inputs[0].len();
     (0..d)
         .filter(|&j| inputs.iter().all(|row| row[j] > 1e-12 && row[j].is_finite()))
+        .collect()
+}
+
+/// Variables usable inside integer-exponent monomials and trig/difference
+/// features: any finite data, including negative and mixed-sign variables.
+/// (Feynman happens to be all-positive; general data is not.)
+fn real_variables(inputs: &[Vec<f64>]) -> Vec<usize> {
+    if inputs.is_empty() {
+        return Vec::new();
+    }
+    let d = inputs[0].len();
+    (0..d)
+        .filter(|&j| inputs.iter().all(|row| row[j].is_finite()))
         .collect()
 }
 
@@ -404,17 +422,24 @@ fn build_dictionary(
 /// difference/product factor, and the monomial avoids the feature's own
 /// variables. The exponent set and active-variable cap of the monomial part
 /// are chosen adaptively to keep the dictionary under `size_limit` columns.
-fn build_feature_dictionary(d: usize, usable: &[usize], size_limit: usize) -> Vec<Term> {
+fn build_feature_dictionary(
+    d: usize,
+    positive: &[usize],
+    real: &[usize],
+    size_limit: usize,
+) -> Vec<Term> {
     let mut features: Vec<Feature> = Vec::new();
-    for &i in usable {
+    for &i in real {
         features.push(Feature::Sin(i));
         features.push(Feature::Cos(i));
         features.push(Feature::Sin2x(i));
         features.push(Feature::Cos2x(i));
+    }
+    for &i in positive {
         features.push(Feature::Ln(i));
     }
-    for (a, &i) in usable.iter().enumerate() {
-        for &j in usable.iter().skip(a + 1) {
+    for (a, &i) in real.iter().enumerate() {
+        for &j in real.iter().skip(a + 1) {
             features.push(Feature::DiffSq(i, j));
             features.push(Feature::CosDiff(i, j));
             features.push(Feature::CosProd(i, j));
@@ -441,11 +466,15 @@ fn build_feature_dictionary(d: usize, usable: &[usize], size_limit: usize) -> Ve
     let per_feature_budget = size_limit / features.len();
     let (exps, cap) = CONFIGS
         .iter()
-        .find(|(e, c)| dict_size_estimate(usable.len(), e.len(), *c) <= per_feature_budget)
+        .find(|(e, c)| dict_size_estimate(real.len(), e.len(), *c) <= per_feature_budget)
         .copied()
         .unwrap_or((&[-1.0, 1.0], 1));
 
-    let base = enumerate_exponents(d, usable, exps, cap.min(usable.len()));
+    // Fractional exponents only make sense on positive variables; integer
+    // configurations may use every finite variable.
+    let has_fractional = exps.iter().any(|e| e.fract() != 0.0);
+    let mono_vars: &[usize] = if has_fractional { positive } else { real };
+    let base = enumerate_exponents(d, mono_vars, exps, cap.min(mono_vars.len().max(1)));
     let mut dictionary: Vec<Term> = Vec::with_capacity(base.len() * (features.len() + 1));
     // Plain monomial columns must coexist with the augmented ones — mixed
     // targets like q*Ef + q*B*v*sin(theta) need both kinds of terms.
@@ -482,7 +511,8 @@ fn build_feature_dictionary(d: usize, usable: &[usize], size_limit: usize) -> Ve
 fn omp_monomial_fit(
     inputs: &[Vec<f64>],
     target: &[f64],
-    usable: &[usize],
+    positive: &[usize],
+    real: &[usize],
     max_terms: usize,
     deadline: Option<Instant>,
     with_features: bool,
@@ -493,13 +523,13 @@ fn omp_monomial_fit(
         Some(row) => row.len(),
         None => return Vec::new(),
     };
-    if usable.is_empty() {
+    if real.is_empty() {
         return Vec::new();
     }
 
     let mut results: Vec<Vec<Term>> = Vec::new();
     if with_features {
-        let dictionary = build_feature_dictionary(d, usable, 150_000);
+        let dictionary = build_feature_dictionary(d, positive, real, 150_000);
         if !dictionary.is_empty() {
             results.extend(pursue_dictionary(
                 inputs,
@@ -510,19 +540,24 @@ fn omp_monomial_fit(
             ));
         }
     } else {
-        for (exps, max_active) in [(FRACTIONAL, 4usize), (INTEGER, 5usize)] {
-            let mut dictionary = build_dictionary(d, usable, exps, max_active, 70_000);
+        for (exps, vars, max_active) in [
+            (FRACTIONAL, positive, 4usize),
+            (INTEGER, real, 5usize),
+        ] {
+            if vars.is_empty() {
+                continue;
+            }
+            let mut dictionary = build_dictionary(d, vars, exps, max_active, 70_000);
             if exps == INTEGER {
                 // Bare single-variable features ride along with the integer
                 // dictionary: mixed supports like ln(n0) - m*g*x/(kb*T)
                 // need a deep monomial AND a lone feature in one pursuit.
-                for &i in usable {
+                for &i in real {
                     for feature in [
                         Feature::Sin(i),
                         Feature::Cos(i),
                         Feature::Sin2x(i),
                         Feature::Cos2x(i),
-                        Feature::Ln(i),
                     ] {
                         dictionary.push(Term {
                             coeff: 1.0,
@@ -530,6 +565,13 @@ fn omp_monomial_fit(
                             feature,
                         });
                     }
+                }
+                for &i in positive {
+                    dictionary.push(Term {
+                        coeff: 1.0,
+                        exponents: vec![0.0; d],
+                        feature: Feature::Ln(i),
+                    });
                 }
             }
             results.extend(pursue_dictionary(
@@ -553,41 +595,99 @@ fn pursue_dictionary(
     max_terms: usize,
     deadline: Option<Instant>,
 ) -> Vec<Vec<Term>> {
-    // Deterministic subsample for the pursuit itself.
-    let n = target.len();
-    let sub_n = n.min(200);
-    let sub_idx: Vec<usize> = (0..sub_n).map(|i| i * n / sub_n).collect();
+    pursue_dictionary_with_starts(inputs, target, dictionary, max_terms, deadline, &[])
+}
 
-    // Precompute normalized dictionary columns on the subsample.
-    let columns: Vec<Option<(Vec<f64>, f64)>> = dictionary
+fn pursue_dictionary_with_starts(
+    inputs: &[Vec<f64>],
+    target: &[f64],
+    dictionary: &[Term],
+    max_terms: usize,
+    deadline: Option<Instant>,
+    extra_starts: &[usize],
+) -> Vec<Vec<Term>> {
+    // Deterministic subsample, split 80/20 into a fit part (used for
+    // selection and coefficients) and a validation part (used to decide
+    // whether a term genuinely helps — under noise the fit residual keeps
+    // shrinking with junk terms while the validation error does not).
+    let n = target.len();
+    let sub_n = n.min(250);
+    let all_idx: Vec<usize> = (0..sub_n).map(|i| i * n / sub_n).collect();
+    let mut fit_rows: Vec<usize> = Vec::with_capacity(sub_n);
+    let mut val_rows: Vec<usize> = Vec::with_capacity(sub_n / 5 + 1);
+    for (pos, &i) in all_idx.iter().enumerate() {
+        if pos % 5 == 4 && sub_n >= 25 {
+            val_rows.push(i);
+        } else {
+            fit_rows.push(i);
+        }
+    }
+
+    // Precompute normalized dictionary columns (fit part + validation part).
+    let eval_term = |term: &Term, rows: &[usize]| -> Option<Vec<f64>> {
+        let mut col = Vec::with_capacity(rows.len());
+        for &i in rows {
+            let row = &inputs[i];
+            let mut acc = 1.0f64;
+            for (x, &e) in row.iter().zip(&term.exponents) {
+                if e != 0.0 {
+                    acc *= x.powf(e);
+                }
+            }
+            acc *= term.feature.eval_row(row);
+            if !acc.is_finite() {
+                return None;
+            }
+            col.push(acc);
+        }
+        Some(col)
+    };
+    let columns: Vec<Option<(Vec<f64>, f64, Vec<f64>)>> = dictionary
         .par_iter()
         .map(|term| {
-            let mut col = Vec::with_capacity(sub_idx.len());
-            for &i in &sub_idx {
-                let row = &inputs[i];
-                let mut acc = 1.0f64;
-                for (x, &e) in row.iter().zip(&term.exponents) {
-                    if e != 0.0 {
-                        acc *= x.powf(e);
-                    }
-                }
-                acc *= term.feature.eval_row(row);
-                if !acc.is_finite() {
-                    return None;
-                }
-                col.push(acc);
-            }
+            let col = eval_term(term, &fit_rows)?;
+            let val_col = eval_term(term, &val_rows)?;
             let norm = col.iter().map(|v| v * v).sum::<f64>().sqrt();
             if norm < 1e-300 || !norm.is_finite() {
                 None
             } else {
-                Some((col, norm))
+                Some((col, norm, val_col))
             }
         })
         .collect();
 
-    let sub_target: Vec<f64> = sub_idx.iter().map(|&i| target[i]).collect();
+    let sub_target: Vec<f64> = fit_rows.iter().map(|&i| target[i]).collect();
+    let val_target: Vec<f64> = val_rows.iter().map(|&i| target[i]).collect();
     let scale = rms(&sub_target).max(1e-300);
+
+    // Validation RMSE of a support, with coefficients fit on the fit part.
+    let validation_error = |chosen: &[usize]| -> f64 {
+        if chosen.is_empty() || val_target.is_empty() {
+            return f64::INFINITY;
+        }
+        let design: Vec<Vec<f64>> = (0..sub_target.len())
+            .map(|i| {
+                chosen
+                    .iter()
+                    .map(|&c| columns[c].as_ref().unwrap().0[i])
+                    .collect()
+            })
+            .collect();
+        let coeffs = match lstsq(&design, &sub_target) {
+            Some(c) => c,
+            None => return f64::INFINITY,
+        };
+        let pred: Vec<f64> = (0..val_target.len())
+            .map(|i| {
+                chosen
+                    .iter()
+                    .zip(&coeffs)
+                    .map(|(&c, k)| columns[c].as_ref().unwrap().2[i] * k)
+                    .sum::<f64>()
+            })
+            .collect();
+        rmse(&pred, &val_target)
+    };
 
     // Orthogonalizes `col` against `basis`; returns (q, q_norm).
     let orthogonalize = |col: &[f64], basis: &[Vec<f64>]| -> (Vec<f64>, f64) {
@@ -615,9 +715,10 @@ fn pursue_dictionary(
         let mut residual = sub_target.clone();
         let mut chosen: Vec<usize> = Vec::new();
         let mut current_rmse = rms(&residual);
+        let mut current_val = f64::INFINITY;
 
         if seed_constant {
-            if let Some((col, norm)) = columns[0].as_ref() {
+            if let Some((col, norm, _)) = columns[0].as_ref() {
                 let qn: Vec<f64> = col.iter().map(|v| v / norm).collect();
                 let r_dot: f64 = residual.iter().zip(&qn).map(|(a, b)| a * b).sum();
                 for (ri, bi) in residual.iter_mut().zip(&qn) {
@@ -633,7 +734,7 @@ fn pursue_dictionary(
         // columns that dominate the initial correlation ranking).
         if let Some(idx) = forced_first {
             if !chosen.contains(&idx) {
-                if let Some((col, norm)) = columns[idx].as_ref() {
+                if let Some((col, norm, _)) = columns[idx].as_ref() {
                     let mut q = col.clone();
                     for b in &ortho_basis {
                         let proj: f64 = col.iter().zip(b).map(|(a, x)| a * x).sum();
@@ -668,7 +769,7 @@ fn pursue_dictionary(
                     if chosen.contains(&idx) {
                         return None;
                     }
-                    let (col, norm) = c.as_ref()?;
+                    let (col, norm, _) = c.as_ref()?;
                     let (q, q_norm) = orthogonalize(col, &ortho_basis);
                     if q_norm < 1e-8 * norm || !q_norm.is_finite() {
                         return None; // collinear with the chosen set
@@ -704,6 +805,15 @@ fn pursue_dictionary(
                 ortho_basis.pop();
                 break;
             }
+            // Validation gate: reject terms that only fit the noise.
+            let new_val = validation_error(&chosen);
+            if new_val > current_val * (1.0 + 1e-9) && new_val > 1e-12 * scale && chosen.len() > 1
+            {
+                chosen.pop();
+                ortho_basis.pop();
+                break;
+            }
+            current_val = new_val;
             current_rmse = new_rmse;
             if current_rmse < 1e-13 * scale {
                 break;
@@ -757,7 +867,7 @@ fn pursue_dictionary(
                         if others.contains(&idx) {
                             return None;
                         }
-                        let (col, norm) = c.as_ref()?;
+                        let (col, norm, _) = c.as_ref()?;
                         let (q, q_norm) = orthogonalize(col, &basis);
                         if q_norm < 1e-8 * norm || !q_norm.is_finite() {
                             return None;
@@ -774,7 +884,7 @@ fn pursue_dictionary(
                 if let Some((best_idx, best_score)) = best {
                     if best_idx != chosen[slot] {
                         let cur_score = {
-                            let (col, norm) = columns[chosen[slot]].as_ref().unwrap();
+                            let (col, norm, _) = columns[chosen[slot]].as_ref().unwrap();
                             let (q, q_norm) = orthogonalize(col, &basis);
                             if q_norm < 1e-8 * norm {
                                 0.0
@@ -823,35 +933,53 @@ fn pursue_dictionary(
         let pred = joint_refit(&mut terms, &full_columns, target)?;
         let full_scale = rms(target).max(1e-300);
         let initial_rmse = rmse(&pred, target);
-        // A term survives only if removing it pushes the error above this.
-        let removal_tolerance = (initial_rmse * 1.25).max(1e-10 * full_scale);
+
+        // Pruning decisions run on a held-out 20% of the data with
+        // coefficients fit on the other 80%: junk terms that only chase the
+        // noise do not survive a validation check.
+        let train_rows: Vec<usize> = (0..target.len()).filter(|i| i % 5 != 4).collect();
+        let val_rows: Vec<usize> = (0..target.len()).filter(|i| i % 5 == 4).collect();
+        let holdout_error = |keep: &[bool]| -> f64 {
+            let active: Vec<usize> = (0..keep.len()).filter(|&i| keep[i]).collect();
+            if active.is_empty() || val_rows.is_empty() {
+                return f64::INFINITY;
+            }
+            let design: Vec<Vec<f64>> = train_rows
+                .iter()
+                .map(|&r| active.iter().map(|&c| full_columns[c][r]).collect())
+                .collect();
+            let train_t: Vec<f64> = train_rows.iter().map(|&r| target[r]).collect();
+            let coeffs = match lstsq(&design, &train_t) {
+                Some(c) => c,
+                None => return f64::INFINITY,
+            };
+            let pred: Vec<f64> = val_rows
+                .iter()
+                .map(|&r| {
+                    active
+                        .iter()
+                        .zip(&coeffs)
+                        .map(|(&c, k)| full_columns[c][r] * k)
+                        .sum::<f64>()
+                })
+                .collect();
+            let val_t: Vec<f64> = val_rows.iter().map(|&r| target[r]).collect();
+            rmse(&pred, &val_t)
+        };
 
         let mut keep: Vec<bool> = vec![true; terms.len()];
+        let initial_val = holdout_error(&keep);
+        // A term survives only if removing it pushes the validation error
+        // above this.
+        let removal_tolerance = (initial_val * 1.25).max(1e-10 * full_scale);
+
         for i in 0..terms.len() {
             if keep.iter().filter(|&&k| k).count() <= 1 {
                 break;
             }
             keep[i] = false;
-            let mut trial: Vec<Term> = terms
-                .iter()
-                .zip(&keep)
-                .filter(|(_, &k)| k)
-                .map(|(t, _)| t.clone())
-                .collect();
-            let trial_cols: Vec<Vec<f64>> = full_columns
-                .iter()
-                .zip(&keep)
-                .filter(|(_, &k)| k)
-                .map(|(c, _)| c.clone())
-                .collect();
-            match joint_refit(&mut trial, &trial_cols, target) {
-                Some(pred) => {
-                    let err = rmse(&pred, target);
-                    if err > removal_tolerance {
-                        keep[i] = true;
-                    }
-                }
-                None => keep[i] = true,
+            if holdout_error(&keep) > removal_tolerance {
+                keep[i] = true;
             }
         }
         let mut pruned: Vec<Term> = terms
@@ -894,7 +1022,7 @@ fn pursue_dictionary(
             .par_iter()
             .enumerate()
             .filter_map(|(idx, c)| {
-                let (col, norm) = c.as_ref()?;
+                let (col, norm, _) = c.as_ref()?;
                 let dot: f64 = col.iter().zip(&sub_target).map(|(a, b)| a * b).sum();
                 let score = (dot / norm).abs();
                 if score.is_finite() {
@@ -906,6 +1034,11 @@ fn pursue_dictionary(
             .collect();
         ranking.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         starts.extend(ranking.into_iter().take(4).map(|(idx, _)| Some(idx)));
+    }
+    for &s in extra_starts {
+        if s < dictionary.len() && !starts.contains(&Some(s)) {
+            starts.push(Some(s));
+        }
     }
 
     let mut results: Vec<Vec<Term>> = Vec::new();
@@ -956,7 +1089,7 @@ fn transform_target(t: Transform, ys_abs: &[f64]) -> Option<Vec<f64>> {
         return None;
     }
     let vals: Vec<f64> = match t {
-        Transform::Id | Transform::Log1p => return Some(ys_abs.to_vec()),
+        Transform::Id | Transform::Log1p | Transform::Logit => return Some(ys_abs.to_vec()),
         Transform::Log => ys_abs.iter().map(|&y| y.ln()).collect(),
         Transform::InvY => ys_abs.iter().map(|&y| 1.0 / y).collect(),
         Transform::InvY2 => ys_abs.iter().map(|&y| 1.0 / (y * y)).collect(),
@@ -990,6 +1123,7 @@ fn invert_prediction(t: Transform, m: f64) -> f64 {
             }
         }
         Transform::Log1p => m.exp_m1(),
+        Transform::Logit => 1.0 / (1.0 + m.exp()),
     }
 }
 
@@ -1010,6 +1144,16 @@ fn invert_expression(
             "Subtract",
             build::unary("Exp", m_expr, reg),
             build::num(1.0),
+            reg,
+        ),
+        Transform::Logit => build::unary(
+            "Inv",
+            build::binary(
+                "Plus",
+                build::num(1.0),
+                build::unary("Exp", m_expr, reg),
+                reg,
+            ),
             reg,
         ),
     };
@@ -1058,6 +1202,14 @@ fn prepare_targets(ys: &[f64]) -> Vec<(Transform, Vec<f64>, bool)> {
                 let shifted_ok = ys.iter().all(|&y| 1.0 + y > 1e-9);
                 if shifted_ok {
                     let vals: Vec<f64> = ys.iter().map(|&y| y.ln_1p()).collect();
+                    if vals.iter().all(|v| v.is_finite()) {
+                        out.push((t, vals, false));
+                    }
+                }
+            }
+            Transform::Logit => {
+                if ys.iter().all(|&y| y > 1e-9 && y < 1.0 - 1e-9) {
+                    let vals: Vec<f64> = ys.iter().map(|&y| ((1.0 - y) / y).ln()).collect();
                     if vals.iter().all(|v| v.is_finite()) {
                         out.push((t, vals, false));
                     }
@@ -1134,7 +1286,8 @@ pub fn run_powerlaw(
     if inputs.len() < 10 || inputs[0].is_empty() {
         return fits;
     }
-    let usable = usable_variables(inputs);
+    let positive = usable_variables(inputs);
+    let real = real_variables(inputs);
     let targets = prepare_targets(ys);
     let y_std = {
         let mean = ys.iter().sum::<f64>() / ys.len() as f64;
@@ -1149,14 +1302,16 @@ pub fn run_powerlaw(
             break;
         }
         let mut candidates: Vec<Vec<Term>> = Vec::new();
-        if let Some(terms) = greedy_monomial_fit(inputs, t_target, &usable, config.max_boost_terms)
+        if let Some(terms) =
+            greedy_monomial_fit(inputs, t_target, &positive, config.max_boost_terms)
         {
             candidates.push(terms);
         }
         candidates.extend(omp_monomial_fit(
             inputs,
             t_target,
-            &usable,
+            &positive,
+            &real,
             config.max_boost_terms,
             deadline,
             false,
@@ -1176,12 +1331,197 @@ pub fn run_powerlaw(
             for terms in omp_monomial_fit(
                 inputs,
                 t_target,
-                &usable,
+                &positive,
+                &real,
                 config.max_boost_terms,
                 deadline,
                 true,
             ) {
                 validate_and_assemble(*t, *negate, &terms, inputs, ys, reg, &mut fits);
+            }
+        }
+    }
+
+    fits.sort_by(|a, b| a.error.partial_cmp(&b.error).unwrap());
+    fits
+}
+
+/// Rational-function stage: fits y ~= P(x)/Q(x) by linearizing y*Q = P.
+///
+/// With a pivot term q0 (whose coefficient in Q is normalized to 1) the
+/// model y*(q0 + sum q_k b_k) = sum p_j b_j is linear in {p_j, q_k}. We fold
+/// y in as an extra input column so the whole fit becomes an ordinary
+/// dictionary pursuit: P columns are basis terms, Q columns are basis terms
+/// with exponent 1 on the y-column, and the target is y*q0. Trying the
+/// constant and every single-variable term as pivot covers denominators
+/// with and without a constant part (e.g. 1 + u*v/c^2 and m1 + m2).
+pub fn run_rational(
+    inputs: &[Vec<f64>],
+    ys: &[f64],
+    config: &SearchConfig,
+    reg: &OperatorRegistry,
+    deadline: Option<Instant>,
+) -> Vec<PowerlawFit> {
+    const INTEGER: &[f64] = &[-2.0, -1.0, 1.0, 2.0];
+    let mut fits: Vec<PowerlawFit> = Vec::new();
+    if inputs.len() < 20 || inputs[0].is_empty() {
+        return fits;
+    }
+    let d = inputs[0].len();
+    let real = real_variables(inputs);
+    if real.is_empty() {
+        return fits;
+    }
+    let basis = build_dictionary(d, &real, INTEGER, 3, 8_000);
+
+    // Augmented rows: [x_0 .. x_{d-1}, y]. A Q column is a basis term with
+    // exponent 1 on the y position.
+    let aug: Vec<Vec<f64>> = inputs
+        .iter()
+        .zip(ys)
+        .map(|(row, &y)| {
+            let mut r = row.clone();
+            r.push(y);
+            r
+        })
+        .collect();
+
+    // Pivot candidates: constant + every single-variable +1 term.
+    let mut pivots: Vec<usize> = Vec::new();
+    for (k, t) in basis.iter().enumerate() {
+        let active: Vec<usize> = (0..d).filter(|&j| t.exponents[j] != 0.0).collect();
+        if active.is_empty() || (active.len() == 1 && t.exponents[active[0]] == 1.0) {
+            pivots.push(k);
+        }
+    }
+
+    for &pivot in &pivots {
+        if deadline.map_or(false, |dl| Instant::now() >= dl) {
+            break;
+        }
+        let pivot_col = Monomial {
+            coeff: 1.0,
+            exponents: basis[pivot].exponents.clone(),
+        }
+        .eval_rows(inputs);
+        if pivot_col.iter().any(|v| !v.is_finite()) {
+            continue;
+        }
+        let target: Vec<f64> = ys.iter().zip(&pivot_col).map(|(y, p)| y * p).collect();
+
+        // Dictionary over the augmented variables.
+        let mut dictionary: Vec<Term> = Vec::with_capacity(basis.len() * 2);
+        for (k, t) in basis.iter().enumerate() {
+            let mut p_exps = t.exponents.clone();
+            p_exps.push(0.0);
+            dictionary.push(Term {
+                coeff: 1.0,
+                exponents: p_exps,
+                feature: Feature::None,
+            });
+            if k != pivot {
+                let mut q_exps = t.exponents.clone();
+                q_exps.push(1.0);
+                dictionary.push(Term {
+                    coeff: 1.0,
+                    exponents: q_exps,
+                    feature: Feature::None,
+                });
+            }
+        }
+
+        // Denominator (Q) columns rank poorly in the initial correlation, so
+        // force the strongest ones as alternative first picks.
+        let q_starts: Vec<usize> = {
+            let sub_n = target.len().min(250);
+            let rows: Vec<usize> = (0..sub_n).map(|i| i * target.len() / sub_n).collect();
+            let t_sub: Vec<f64> = rows.iter().map(|&i| target[i]).collect();
+            let mut ranked: Vec<(usize, f64)> = dictionary
+                .par_iter()
+                .enumerate()
+                .filter_map(|(idx, term)| {
+                    if term.exponents[d] != 1.0 {
+                        return None; // Q columns only
+                    }
+                    let mut col = Vec::with_capacity(rows.len());
+                    for &i in &rows {
+                        let mut acc = 1.0f64;
+                        for (x, &e) in aug[i].iter().zip(&term.exponents) {
+                            if e != 0.0 {
+                                acc *= x.powf(e);
+                            }
+                        }
+                        if !acc.is_finite() {
+                            return None;
+                        }
+                        col.push(acc);
+                    }
+                    let norm = col.iter().map(|v| v * v).sum::<f64>().sqrt();
+                    if norm < 1e-300 {
+                        return None;
+                    }
+                    let dot: f64 = col.iter().zip(&t_sub).map(|(a, b)| a * b).sum();
+                    let score = (dot / norm).abs();
+                    if score.is_finite() {
+                        Some((idx, score))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            // Small bases: try every denominator column as a forced first
+            // pick (single-denominator-term rationals become exhaustive).
+            let cap = if ranked.len() <= 160 { ranked.len() } else { 64 };
+            ranked.into_iter().take(cap).map(|(i, _)| i).collect()
+        };
+
+        for terms in pursue_dictionary_with_starts(
+            &aug,
+            &target,
+            &dictionary,
+            config.max_boost_terms,
+            deadline,
+            &q_starts,
+        ) {
+            // Split into P (y-exponent 0) and Q (y-exponent 1) parts.
+            let mut p_terms: Vec<Term> = Vec::new();
+            let mut q_terms: Vec<Term> = Vec::new();
+            let mut valid = true;
+            for t in terms {
+                let y_exp = t.exponents[d];
+                let mut stripped = t.clone();
+                stripped.exponents.truncate(d);
+                if y_exp == 0.0 {
+                    p_terms.push(stripped);
+                } else if y_exp == 1.0 {
+                    // y*q0 = P + c*(y*b)  =>  Q gains term -c*b.
+                    stripped.coeff = -stripped.coeff;
+                    q_terms.push(stripped);
+                } else {
+                    valid = false;
+                    break;
+                }
+            }
+            if !valid || p_terms.is_empty() {
+                continue;
+            }
+            let mut q_all = vec![{
+                let mut t = basis[pivot].clone();
+                t.coeff = 1.0;
+                t
+            }];
+            q_all.extend(q_terms);
+
+            let p_expr = build::term_sum_expression(&p_terms, reg);
+            let q_expr = build::term_sum_expression(&q_all, reg);
+            let expr = build::binary("Divide", p_expr, q_expr, reg);
+            let err = expression_rmse(&expr, inputs, ys, reg);
+            if err.is_finite() {
+                fits.push(PowerlawFit {
+                    expression: expr,
+                    error: err,
+                });
             }
         }
     }
@@ -1516,4 +1856,168 @@ mod feature_tests {
         assert!(err < 1e-8 * scale, "error too large: {err}");
     }
 }
+
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+    use crate::ops::registry::OperatorRegistry;
+
+    fn lcg(seed: &mut u64) -> f64 {
+        *seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (*seed >> 11) as f64 / (1u64 << 53) as f64
+    }
+
+    #[test]
+    fn recovers_rational_function() {
+        // y = (x0 + x1) / (1 + x0*x1)  (I.16.6 shape)
+        let mut inputs = Vec::new();
+        for i in 1..=25 {
+            for j in 1..=25 {
+                inputs.push(vec![0.2 + i as f64 * 0.15, 0.2 + j as f64 * 0.12]);
+            }
+        }
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| (r[0] + r[1]) / (1.0 + r[0] * r[1]))
+            .collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_rational(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let scale = rms(&ys);
+        assert!(
+            fits[0].error < 1e-8 * scale,
+            "error too large: {}",
+            fits[0].error
+        );
+    }
+
+    #[test]
+    fn recovers_rational_without_constant_denominator() {
+        // y = (a*r1 + b*r2) / (a + b)  (I.18.4 shape)
+        let mut inputs = Vec::new();
+        let mut seed = 999u64;
+        let mut rand = || 1.0 + 4.0 * lcg(&mut seed);
+        for _ in 0..600 {
+            inputs.push(vec![rand(), rand(), rand(), rand()]);
+        }
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| (r[0] * r[2] + r[1] * r[3]) / (r[0] + r[1]))
+            .collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_rational(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let scale = rms(&ys);
+        assert!(
+            fits[0].error < 1e-8 * scale,
+            "error too large: {}",
+            fits[0].error
+        );
+    }
+
+    #[test]
+    fn recovers_monomial_with_negative_variables() {
+        // y = 2*x0^2*x1 with x0 in (-3,3), x1 in (-2,2) — Feynman never has
+        // negative variables; general data does.
+        let mut inputs = Vec::new();
+        for i in 0..30 {
+            for j in 0..30 {
+                inputs.push(vec![-3.0 + i as f64 * 0.21, -2.0 + j as f64 * 0.14]);
+            }
+        }
+        let ys: Vec<f64> = inputs.iter().map(|r| 2.0 * r[0] * r[0] * r[1]).collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let scale = rms(&ys);
+        assert!(
+            fits[0].error < 1e-8 * scale,
+            "error too large: {}",
+            fits[0].error
+        );
+    }
+
+    #[test]
+    fn recovers_logistic_via_logit() {
+        // y = 1/(1 + exp(x1 - 2*x0)) with x in (-2,2)
+        let mut inputs = Vec::new();
+        for i in 0..30 {
+            for j in 0..30 {
+                inputs.push(vec![-2.0 + i as f64 * 0.14, -2.0 + j as f64 * 0.14]);
+            }
+        }
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| 1.0 / (1.0 + (r[1] - 2.0 * r[0]).exp()))
+            .collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let scale = rms(&ys);
+        assert!(
+            fits[0].error < 1e-8 * scale,
+            "error too large: {}",
+            fits[0].error
+        );
+    }
+
+    #[test]
+    fn noise_does_not_inflate_term_count() {
+        // y = x0*x1 + 1% gaussian-ish noise: the recovered candidate must not
+        // stack junk terms chasing the noise (validation gate).
+        let mut inputs = Vec::new();
+        let mut seed = 4242u64;
+        for _ in 0..750 {
+            let a = 1.0 + 4.0 * lcg(&mut seed);
+            let b = 1.0 + 4.0 * lcg(&mut seed);
+            inputs.push(vec![a, b]);
+        }
+        let clean: Vec<f64> = inputs.iter().map(|r| r[0] * r[1]).collect();
+        let y_std = {
+            let m = clean.iter().sum::<f64>() / clean.len() as f64;
+            (clean.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / clean.len() as f64).sqrt()
+        };
+        let sigma = 0.01 * y_std;
+        let ys: Vec<f64> = clean
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| {
+                // Box-Muller-ish deterministic noise
+                let u1 = lcg(&mut seed).max(1e-12);
+                let u2 = lcg(&mut seed);
+                let g = (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos();
+                let _ = i;
+                c + sigma * g
+            })
+            .collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        // Fit error should be at the noise floor, not below (no overfit),
+        // and the winning expression should stay small.
+        let best = &fits[0];
+        assert!(
+            best.error < 1.3 * sigma,
+            "error too large vs noise floor: {} vs sigma {}",
+            best.error,
+            sigma
+        );
+        assert!(
+            best.expression.complexity() <= 12,
+            "junk terms inflated the expression: complexity {}",
+            best.expression.complexity()
+        );
+    }
+}
+
+
+
 

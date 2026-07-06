@@ -119,6 +119,8 @@ pub struct SearchConfig {
     pub powerlaw_stage: bool,
     /// Enable the Stage C multiplicative-decomposition (ratio) search.
     pub ratio_search: bool,
+    /// Enable the rational-function stage (y ~= P(x)/Q(x) linearization).
+    pub rational_stage: bool,
     /// Maximum number of monomial terms in Stage A residual boosting / OMP.
     pub max_boost_terms: usize,
     /// Fit `a*f+b` in closed form when scoring every BFS candidate.
@@ -161,6 +163,7 @@ impl SearchConfig {
             snap_constants: true,
             powerlaw_stage: true,
             ratio_search: true,
+            rational_stage: true,
             max_boost_terms: 6,
             affine_scaling: true,
             affine_class_cap: 3,
