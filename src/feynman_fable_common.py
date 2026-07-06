@@ -424,10 +424,16 @@ def write_report(summary, report_path, title, description_lines):
 # ------------------------------------------------------------------
 
 def run_benchmark(searcher_params, n_samples, results_path, report_path,
-                  title, description_lines, limit=None, smoke_ids=None):
+                  title, description_lines, limit=None, smoke_ids=None,
+                  extra_baselines=None):
+    """extra_baselines: {label: results_json_path} で追加の比較対象を指定できる。"""
     equations = load_equations()
-    first_ai_ok = load_baseline_ok_ids(FIRST_AI_RESULTS_PATH)
-    cursor_ok   = load_baseline_ok_ids(CURSOR_RESULTS_PATH)
+    baselines = {
+        "first_AI": load_baseline_ok_ids(FIRST_AI_RESULTS_PATH),
+        "cursor":   load_baseline_ok_ids(CURSOR_RESULTS_PATH),
+    }
+    for label, path in (extra_baselines or {}).items():
+        baselines[label] = load_baseline_ok_ids(path)
 
     if smoke_ids:
         equations = [(i, eq) for i, eq in enumerate(equations)
@@ -492,8 +498,8 @@ def run_benchmark(searcher_params, n_samples, results_path, report_path,
             "ok": ok_count,
             "completed": run_idx + 1,
             "comparisons": {
-                "first_AI": compare_with_baseline(fable_ok_ids, first_ai_ok, attempted_ids),
-                "cursor":   compare_with_baseline(fable_ok_ids, cursor_ok, attempted_ids),
+                label: compare_with_baseline(fable_ok_ids, ok_ids, attempted_ids)
+                for label, ok_ids in baselines.items()
             },
             "settings": {**searcher_params, "N_SAMPLES": n_samples,
                          "RMSE_THRESHOLD": RMSE_THRESHOLD, "RMSE_PARTIAL": RMSE_PARTIAL},
@@ -514,8 +520,8 @@ def run_benchmark(searcher_params, n_samples, results_path, report_path,
         "partial"        : sum(1 for r in results if r.get("status") == "partial"),
         "total_elapsed_s": total_elapsed,
         "comparisons"    : {
-            "first_AI": compare_with_baseline(fable_ok_ids, first_ai_ok, attempted_ids),
-            "cursor":   compare_with_baseline(fable_ok_ids, cursor_ok, attempted_ids),
+            label: compare_with_baseline(fable_ok_ids, ok_ids, attempted_ids)
+            for label, ok_ids in baselines.items()
         },
         "settings": {**searcher_params, "N_SAMPLES": n_samples,
                      "RMSE_THRESHOLD": RMSE_THRESHOLD, "RMSE_PARTIAL": RMSE_PARTIAL},
