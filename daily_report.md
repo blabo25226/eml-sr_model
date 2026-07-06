@@ -1,3 +1,30 @@
+## 2026/07/05 (eml-sr_fable v2 改善)
+
+### AI（エージェント・Claude Fable）が行ったこと
+- 1.test 失敗 21 式の原因分析を実施（ユーザー指摘の「Plus 演算子だらけの失敗式」= 辞書にない構造を junk な単項式和で近似していたことを特定）。作業計画書 v2 を作成しユーザー承諾後に着手
+- **eml-sr_fable 本体を直接改善（v2）**:
+  - 特徴量拡張辞書（単項式×{sin, cos, sin(2x), cos(2x), ln, (xi−xj)², cos(xi−xj), cos/sin(xi·xj), cos/sin(2xy)}、±0.5 指数込み）を第2パスとして追加
+  - 整数辞書の active 変数上限 3→5、素の1変数特徴量列を整数辞書に同乗
+  - Log 変換の過剰ガード除去（指数則で y が数十桁にわたるケース、I.40.1 の直接原因）
+  - 後方剪定の強化（削除許容 1.25 倍 + 未剪定フォールバック）→ junk な Plus 連鎖を抑制
+  - Log1p 変換（e^m−1 型）、比ターゲットへの Stage A 適用、混合符号ホワイトナー + 候補5プローブ
+  - 辞書 ≤2万列時の多スタート OLS（初期相関上位4列を強制初手）
+  - Tanh 演算子登録（2.test 向け）、単体テスト4件追加（計9件全通過）
+- `src/feynman_eml_sr_fable_test1_v2.py` を新規作成（1.test と同一条件・同一シード、出力は v1 と分離、fable_v1 ベースライン比較付き）
+- **全 99 式 1.test_v2 本番実行完了**:
+  - **結果: 完全回収 80式 (80.8%)、部分回収 6式、合計 86式 (86.9%)、失敗 8式、スキップ 5式**
+  - **v1 比 delta_ok = +17（新規: I.8.14, I.12.11, I.13.12, I.29.16, I.34.14, I.40.1, I.41.16, I.44.4, I.50.26, I.6.2b, II.2.42, II.21.32, II.6.15a/b, III.14.14, III.15.12, III.17.37）、回帰ゼロ**
+  - cursor 比 +67、first_AI 比 +71。総実行時間 27.1 分、1 式中央値 2.9 秒
+  - 残る失敗 8 式は有理式・Dirichlet 核・sinc²・6変数項など complexity 6 での構造的困難
+  - 出力: `results/eml_sr_fable_feynman_test1_v2_results.json`, `texts/eml_sr_fable_feynman_test1_v2_report.md`, `results/feynman_fable_test1_v2.log`
+- 成果物を git commit → push、PR #1 を更新
+
+### ユーザーが行ったこと
+- 1.test 結果を確認し、失敗式（特に Plus 演算子が多い出力）の原因分析と修正・1.test_v2 の実行を指示。eml-sr_fable 本体の直接編集を許可
+- v2 作業計画書を承諾
+
+---
+
 ## 2026/07/04 (eml-sr_fable 開発)
 
 ### AI（エージェント・Claude Fable）が行ったこと
