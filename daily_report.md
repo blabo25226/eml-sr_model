@@ -1,3 +1,15 @@
+## 2026/07/07 (test2 別PC実行手順書)
+
+### AI（エージェント）が行ったこと
+- 別 PC で `feynman_eml_sr_fable_test2.py` / `test2_v2.py` を実行する手順書を作成: `texts/20260707_手順書.md`（git clone・ブランチ切替・maturin ビルド・スモーク/本番実行・出力ファイルの説明・トラブルシューティング）
+- 手順書に追記: 計算後のターミナル出力を `results/feynman_fable_test2.log` / `test2_v2.log` へコピペする手順、git add / commit / push
+
+### ユーザーが行ったこと
+- 別 PC 実行手順の整理・手順書作成を依頼
+- 手順書へ .log コピペと git push 手順の追記を指示
+
+---
+
 ## 2026/07/05 (eml-sr_fable v3: 汎用化・ノイズ頑健化)
 
 ### AI（エージェント・Claude Fable）が行ったこと
