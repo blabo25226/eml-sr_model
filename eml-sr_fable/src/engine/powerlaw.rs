@@ -518,9 +518,12 @@ fn omp_monomial_fit(
     with_features: bool,
 ) -> Vec<Vec<Term>> {
     const FRACTIONAL: &[f64] = &[-3.0, -2.0, -1.0, -0.5, 0.5, 1.0, 2.0, 3.0];
-    // Cubes must be available for mixed-sign variables too (x^3 on (-3,3)
+    // Two integer dictionaries: the compact +-2 one keeps the selection
+    // clean for feature-mixed supports (e.g. ln(n0) - m*g*x/(kb*T)), while
+    // the +-3 one covers cubes on mixed-sign variables (x^3 on (-3,3)
     // cannot come from the positive-only fractional dictionary).
-    const INTEGER: &[f64] = &[-3.0, -2.0, -1.0, 1.0, 2.0, 3.0];
+    const INTEGER2: &[f64] = &[-2.0, -1.0, 1.0, 2.0];
+    const INTEGER3: &[f64] = &[-3.0, -2.0, -1.0, 1.0, 2.0, 3.0];
     let d = match inputs.first() {
         Some(row) => row.len(),
         None => return Vec::new(),
@@ -544,13 +547,14 @@ fn omp_monomial_fit(
     } else {
         for (exps, vars, max_active) in [
             (FRACTIONAL, positive, 4usize),
-            (INTEGER, real, 5usize),
+            (INTEGER3, real, 5usize),
+            (INTEGER2, real, 5usize),
         ] {
             if vars.is_empty() {
                 continue;
             }
             let mut dictionary = build_dictionary(d, vars, exps, max_active, 70_000);
-            if exps == INTEGER {
+            if exps == INTEGER2 {
                 // Bare single-variable features ride along with the integer
                 // dictionary: mixed supports like ln(n0) - m*g*x/(kb*T)
                 // need a deep monomial AND a lone feature in one pursuit.
