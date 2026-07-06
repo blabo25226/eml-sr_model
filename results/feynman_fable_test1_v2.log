@@ -326,3 +326,82 @@
   RMSE:   5.442e-03  Status: partial  Time: 85.19s
 
 [082/99] II.36.38  (vars=8)
+  Found:  Times(Times(2.3454168967011055, Divide(Times(v_{0}, v_{1}), Times(Times(v_{2}, v_{3}), ...
+  RMSE:   1.911e-02  Status: failed  Time: 79.84s
+
+[083/99] II.38.3  (vars=4)
+  Found:  Divide(Times(Times(v_{0}, v_{1}), v_{3}), v_{2})
+  RMSE:   1.535e-15  Status: ok  Time: 2.99s
+
+[084/99] II.38.14  (vars=2)
+  Found:  Inv(Plus(Plus(Plus(Times(-0.000000000000008104628079763643, Cos(Times(2, v_{0}))), Time...
+  RMSE:   1.081e-14  Status: ok  Time: 0.37s
+
+[085/99] III.4.32  (vars=4)
+  Found:  Plus(Plus(Plus(Plus(Plus(Plus(Plus(-0.497962440031377, Times(6.283393677838191, Divide(...
+  RMSE:   2.941e-06  Status: ok  Time: 85.15s
+
+[086/99] III.4.33  (vars=4)
+  Found:  Times(Times(0.9438797379995213, Times(v_{2}, v_{3})), Exp(Plus(Plus(Plus(Plus(Plus(Plus...
+  RMSE:   1.366e-05  Status: ok  Time: 79.48s
+
+[087/99] III.7.38  (vars=3)
+  Found:  Inv(Sqrt(Times(0.006332573977646116, Divide(Square(v_{2}), Times(Square(v_{0}), Square(...
+  RMSE:   2.427e-14  Status: ok  Time: 0.48s
+
+[088/99] III.8.54  (vars=3)
+  Found:  Plus(Times(Times(0.01114897679264584, Square(v_{2})), Cos(Times(2, Times(v_{0}, v_{1}))...
+  RMSE:   3.461e-01  Status: failed  Time: 20.95s
+
+[089/99] III.9.52  (vars=6)
+  Found:  Times(Times(11.629313489745059, Divide(Times(v_{0}, v_{1}), Times(v_{2}, v_{3}))), Plus...
+  RMSE:   2.765e+00  Status: failed  Time: 80.87s
+
+[090/99] III.10.19  (vars=3)
+  [SKIP] too few valid samples
+
+[091/99] III.12.43  (vars=2)
+  Found:  Sqrt(Times(0.025330295910584454, Times(Square(v_{0}), Square(v_{1}))))
+  RMSE:   3.793e-16  Status: ok  Time: 0.18s
+
+[092/99] III.13.18  (vars=4)
+  Found:  Sqrt(Times(157.91367041743, Divide(Times(Times(Square(v_{0}), Square(Square(v_{1}))), S...
+  RMSE:   6.686e-13  Status: ok  Time: 4.27s
+
+[093/99] III.14.14  (vars=5)
+  Found:  Times(Times(1.6683715913995432, Divide(Times(Times(v_{0}, Square(v_{1})), Square(v_{2})...
+  RMSE:   4.609e-05  Status: ok  Time: 86.14s
+
+[094/99] III.15.12  (vars=3)
+  Found:  Plus(Times(2, v_{0}), Times(Times(-1.9999999999999991, v_{0}), Cos(Times(v_{1}, v_{2}))))
+  RMSE:   2.055e-15  Status: ok  Time: 0.62s
+
+[095/99] III.15.14  (vars=3)
+  Found:  Inv(Sqrt(Times(6234.181826176159, Divide(Times(Square(v_{1}), Square(Square(v_{2}))), S...
+  RMSE:   7.757e-18  Status: ok  Time: 0.78s
+
+[096/99] III.15.27  (vars=3)
+  Found:  Inv(Times(0.1591549430918953, Divide(Times(v_{1}, v_{2}), v_{0})))
+  RMSE:   1.307e-15  Status: ok  Time: 0.45s
+
+[097/99] III.17.37  (vars=3)
+  Found:  Plus(Times(1.000000000000005, v_{0}), Times(Times(1.000000000000002, Times(v_{0}, v_{1}...
+  RMSE:   1.193e-14  Status: ok  Time: 0.56s
+
+[098/99] III.19.51  (vars=4)
+  [SKIP] too few valid samples
+
+[099/99] III.21.20  (vars=4)
+  Found:  Neg(Divide(Times(Times(v_{0}, v_{1}), v_{2}), v_{3}))
+  RMSE:   1.430e-15  Status: ok  Time: 1.63s
+
+[INFO] Results saved to /home/user/eml-sr_model/results/eml_sr_fable_feynman_test1_v2_results.json
+[INFO] Report written to /home/user/eml-sr_model/texts/eml_sr_fable_feynman_test1_v2_report.md
+
+==============================================================
+  SUMMARY: 80 / 99 equations recovered
+  vs first_AI: delta_ok=71  lost=[]
+  vs cursor: delta_ok=67  lost=[]
+  vs fable_v1: delta_ok=17  lost=[]
+  Total time: 1624.1s (27.1min)
+==============================================================
