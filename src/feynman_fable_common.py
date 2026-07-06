@@ -140,13 +140,24 @@ def compare_with_baseline(fable_ok_ids, baseline_ok_ids, attempted_ids=None):
 # 1 式の探索
 # ------------------------------------------------------------------
 
-def run_sr(eq_id, X_train, y_train, searcher_params):
+def run_sr(eq_id, X_train, y_train, searcher_params,
+           X_test=None, y_test=None, sigma=0.0):
+    """1 式の探索。
+
+    - 候補選択は訓練 RMSE で行うが、最良から 5% 以内の候補があれば
+      最も複雑度の低いものを選ぶ（ノイズ下での過適合候補を避ける）。
+    - X_test/y_test が与えられた場合、合否判定はホールドアウトの
+      テスト RMSE（クリーンなターゲットとの比較）で行う。
+    - sigma > 0 のとき閾値をノイズ水準に比例させる:
+      ok = max(1e-4, 0.15*sigma), partial = max(1e-2, 0.5*sigma)
+    """
     import eml_sr_fable
 
     base = {
         "eq_id": eq_id, "status": "failed",
         "found_formula": None, "found_python": None,
-        "rmse": None, "complexity": None,
+        "rmse": None, "train_rmse": None, "test_rmse": None,
+        "sigma": sigma, "complexity": None,
         "elapsed_s": 0.0, "candidates": [],
         "all_candidates": [],
     }
@@ -165,44 +176,57 @@ def run_sr(eq_id, X_train, y_train, searcher_params):
             base["status"] = "no_candidates"
             return base
 
-        best_cand, best_rmse_val = None, float("inf")
         cand_infos = []
-
+        scored = []
         for cand in candidates:
             try:
                 preds     = np.array(cand.predict(inputs_list), dtype=float)
                 cand_rmse = rmse(y_train, preds) if np.all(np.isfinite(preds)) else float("inf")
             except Exception:
                 cand_rmse = float("inf")
-
-            info = {
+            cand_infos.append({
                 "formula"   : cand.formula,
                 "python"    : cand.to_python(),
                 "complexity": cand.complexity,
                 "rmse"      : None if not np.isfinite(cand_rmse) else cand_rmse,
                 "error"     : cand.error,
-            }
-            cand_infos.append(info)
-
-            if cand_rmse < best_rmse_val:
-                best_rmse_val = cand_rmse
-                best_cand     = cand
+            })
+            scored.append((cand, cand_rmse))
 
         base["all_candidates"] = cand_infos
 
-        if best_cand is None:
+        finite = [(c, r) for c, r in scored if np.isfinite(r)]
+        if not finite:
             base["status"] = "prediction_failed"
             return base
+        best_train = min(r for _, r in finite)
+        # 節約的タイブレーク: 最良訓練 RMSE の 5% 帯内で最小複雑度
+        band = [(c, r) for c, r in finite
+                if r <= best_train * 1.05 + 1e-300]
+        best_cand, train_rmse_val = min(band, key=lambda cr: (cr[0].complexity, cr[1]))
 
         base["found_formula"] = best_cand.formula
         base["found_python"]  = best_cand.to_python()
         base["complexity"]    = best_cand.complexity
-        base["rmse"]          = best_rmse_val if np.isfinite(best_rmse_val) else None
+        base["train_rmse"]    = train_rmse_val
         base["candidates"]    = cand_infos
 
-        if np.isfinite(best_rmse_val) and best_rmse_val < RMSE_THRESHOLD:
+        if X_test is not None and y_test is not None:
+            try:
+                preds_t = np.array(best_cand.predict(X_test.tolist()), dtype=float)
+                eval_rmse = rmse(y_test, preds_t) if np.all(np.isfinite(preds_t)) else float("inf")
+            except Exception:
+                eval_rmse = float("inf")
+            base["test_rmse"] = None if not np.isfinite(eval_rmse) else eval_rmse
+        else:
+            eval_rmse = train_rmse_val
+        base["rmse"] = None if not np.isfinite(eval_rmse) else eval_rmse
+
+        thr_ok      = max(RMSE_THRESHOLD, 0.15 * sigma)
+        thr_partial = max(RMSE_PARTIAL,   0.50 * sigma)
+        if np.isfinite(eval_rmse) and eval_rmse < thr_ok:
             base["status"] = "ok"
-        elif np.isfinite(best_rmse_val) and best_rmse_val < RMSE_PARTIAL:
+        elif np.isfinite(eval_rmse) and eval_rmse < thr_partial:
             base["status"] = "partial"
         else:
             base["status"] = "failed"
@@ -425,8 +449,13 @@ def write_report(summary, report_path, title, description_lines):
 
 def run_benchmark(searcher_params, n_samples, results_path, report_path,
                   title, description_lines, limit=None, smoke_ids=None,
-                  extra_baselines=None):
-    """extra_baselines: {label: results_json_path} で追加の比較対象を指定できる。"""
+                  extra_baselines=None, n_test=0, noise_rel=0.0):
+    """extra_baselines: {label: results_json_path} で追加の比較対象を指定できる。
+
+    n_test > 0 でホールドアウト評価（テスト点は seed=4242+行番号で新規生成、
+    クリーンなターゲットに対する RMSE で合否判定）。
+    noise_rel > 0 で訓練ターゲットにガウスノイズ
+    y += N(0, (noise_rel*std(y))^2) を注入（seed=777+行番号）。"""
     equations = load_equations()
     baselines = {
         "first_AI": load_baseline_ok_ids(FIRST_AI_RESULTS_PATH),
@@ -457,6 +486,15 @@ def run_benchmark(searcher_params, n_samples, results_path, report_path,
 
         X, y = generate_dataset(eq, n_samples, seed=42 + csv_idx)
 
+        X_test, y_test = (None, None)
+        if n_test > 0:
+            X_test, y_test = generate_dataset(eq, n_test, seed=4242 + csv_idx)
+            if len(y_test) < 10:
+                X_test, y_test = (None, None)
+            else:
+                mask_t = np.isfinite(y_test)
+                X_test, y_test = X_test[mask_t], y_test[mask_t]
+
         if len(y) < 10 or np.isfinite(y).sum() < 10:
             print("  [SKIP] too few valid samples")
             results.append({
@@ -472,7 +510,15 @@ def run_benchmark(searcher_params, n_samples, results_path, report_path,
         mask = np.isfinite(y)
         X, y = X[mask], y[mask]
 
-        result = run_sr(eq_id, X, y, searcher_params)
+        sigma = 0.0
+        y_train = y
+        if noise_rel > 0.0:
+            sigma = noise_rel * float(np.std(y))
+            rng_n = np.random.default_rng(777 + csv_idx)
+            y_train = y + rng_n.normal(0.0, sigma, size=len(y))
+
+        result = run_sr(eq_id, X, y_train, searcher_params,
+                        X_test=X_test, y_test=y_test, sigma=sigma)
         result["index"]     = run_idx + 1
         result["csv_index"] = csv_idx + 1
         result["n_vars"]    = n_vars
@@ -502,6 +548,7 @@ def run_benchmark(searcher_params, n_samples, results_path, report_path,
                 for label, ok_ids in baselines.items()
             },
             "settings": {**searcher_params, "N_SAMPLES": n_samples,
+                         "N_TEST": n_test, "NOISE_REL": noise_rel,
                          "RMSE_THRESHOLD": RMSE_THRESHOLD, "RMSE_PARTIAL": RMSE_PARTIAL},
             "results": results,
         }
@@ -524,6 +571,7 @@ def run_benchmark(searcher_params, n_samples, results_path, report_path,
             for label, ok_ids in baselines.items()
         },
         "settings": {**searcher_params, "N_SAMPLES": n_samples,
+                     "N_TEST": n_test, "NOISE_REL": noise_rel,
                      "RMSE_THRESHOLD": RMSE_THRESHOLD, "RMSE_PARTIAL": RMSE_PARTIAL},
         "results": results,
     }
