@@ -35,6 +35,10 @@ fn expr_error(
     (acc / ys.len() as f64).sqrt()
 }
 
+fn deadline_passed(deadline: Option<Instant>) -> bool {
+    deadline.map_or(false, |d| Instant::now() >= d)
+}
+
 fn std_dev(v: &[f64]) -> f64 {
     if v.is_empty() {
         return 0.0;
@@ -102,48 +106,101 @@ pub fn run_fable(
     }
 
     // ---- Stage C: multiplicative decomposition (ratio search) ----
+    // The log-fit whitener is ambiguous when the non-monomial factor leaks
+    // exponent mass onto its own variables, so probe the leading candidates
+    // with the cheap closed-form Stage A before spending beam-search budget.
     let mut ratio_solved = false;
-    if config.ratio_search && inputs[0].len() >= 1 {
-        if let Some(whitener) = powerlaw::best_monomial_whitener(inputs, ys) {
-            let has_structure = whitener.exponents.iter().any(|&e| e != 0.0);
+    if config.ratio_search && !inputs[0].is_empty() {
+        let candidates = powerlaw::monomial_whitener_candidates(inputs, ys);
+        let ratio_deadline = deadline.map(|d| {
+            let remaining = d.saturating_duration_since(Instant::now());
+            Instant::now() + remaining / 2
+        });
+
+        let mut probes: Vec<(crate::core::build::Monomial, Vec<f64>)> = Vec::new();
+        let mut seen_exps: Vec<Vec<f64>> = Vec::new();
+        for whitener in candidates {
+            if probes.len() >= 5 {
+                break;
+            }
+            if !whitener.exponents.iter().any(|&e| e != 0.0) {
+                continue;
+            }
+            if seen_exps.contains(&whitener.exponents) {
+                continue;
+            }
+            seen_exps.push(whitener.exponents.clone());
             let m_vals = whitener.eval_rows(inputs);
-            let m_ok = m_vals
-                .iter()
-                .all(|v| v.is_finite() && v.abs() > 1e-300);
-            if has_structure && m_ok {
-                let ratios: Vec<f64> = ys.iter().zip(&m_vals).map(|(y, m)| y / m).collect();
-                if ratios.iter().all(|r| r.is_finite()) {
-                    // Give the ratio search roughly half of the remaining budget.
-                    let ratio_deadline = deadline.map(|d| {
-                        let remaining = d.saturating_duration_since(Instant::now());
-                        Instant::now() + remaining / 2
-                    });
-                    let mut sub_config = config.clone();
-                    sub_config.verbose = false;
-                    if config.verbose {
-                        println!(
-                            "[EML-SR-Fable] Stage C: ratio search against monomial whitener {}.",
-                            whitener.to_expression(&registry).display()
-                        );
+            if !m_vals.iter().all(|v| v.is_finite() && v.abs() > 1e-300) {
+                continue;
+            }
+            let ratios: Vec<f64> = ys.iter().zip(&m_vals).map(|(y, m)| y / m).collect();
+            if ratios.iter().all(|r| r.is_finite()) {
+                probes.push((whitener, ratios));
+            }
+        }
+
+        // Stage A on each candidate ratio: corrections like exp(-monomial)
+        // or exp(monomial)-1 exceed the beam complexity budget but
+        // linearize under the power-law transforms (Log / Log1p).
+        if config.powerlaw_stage {
+            for (whitener, ratios) in &probes {
+                if ratio_solved || deadline_passed(ratio_deadline) {
+                    break;
+                }
+                let t0 = Instant::now();
+                let a_deadline = Some(
+                    ratio_deadline
+                        .unwrap_or(t0 + Duration::from_secs(20))
+                        .min(t0 + Duration::from_secs(20)),
+                );
+                if config.verbose {
+                    println!(
+                        "[EML-SR-Fable] Stage C: powerlaw probe of ratio vs {}.",
+                        whitener.to_expression(&registry).display()
+                    );
+                }
+                let m_expr = whitener.to_expression(&registry);
+                let a_fits =
+                    powerlaw::run_powerlaw(inputs, ratios, config, &registry, a_deadline);
+                for fit in a_fits {
+                    let combined =
+                        build::binary("Times", m_expr.clone(), fit.expression, &registry);
+                    let err = expr_error(&combined, inputs, ys, &registry);
+                    if err.is_finite() {
+                        if solved(err) {
+                            ratio_solved = true;
+                        }
+                        pool.push((err, combined));
                     }
-                    if let Ok(entries) = bfs::run_bfs_front(
-                        inputs,
-                        &ratios,
-                        &sub_config,
-                        ratio_deadline,
-                        &registry,
-                    ) {
-                        let m_expr = whitener.to_expression(&registry);
-                        for (_, g_expr) in entries {
-                            let combined =
-                                build::binary("Times", m_expr.clone(), g_expr, &registry);
-                            let err = expr_error(&combined, inputs, ys, &registry);
-                            if err.is_finite() {
-                                if solved(err) {
-                                    ratio_solved = true;
-                                }
-                                pool.push((err, combined));
+                }
+            }
+        }
+
+        // Beam search on the best whitener's ratio when still unsolved.
+        if !ratio_solved {
+            if let Some((whitener, ratios)) = probes.first() {
+                let mut sub_config = config.clone();
+                sub_config.verbose = false;
+                if config.verbose {
+                    println!(
+                        "[EML-SR-Fable] Stage C: ratio beam search vs {}.",
+                        whitener.to_expression(&registry).display()
+                    );
+                }
+                let m_expr = whitener.to_expression(&registry);
+                if let Ok(entries) =
+                    bfs::run_bfs_front(inputs, ratios, &sub_config, ratio_deadline, &registry)
+                {
+                    for (_, g_expr) in entries {
+                        let combined =
+                            build::binary("Times", m_expr.clone(), g_expr, &registry);
+                        let err = expr_error(&combined, inputs, ys, &registry);
+                        if err.is_finite() {
+                            if solved(err) {
+                                ratio_solved = true;
                             }
+                            pool.push((err, combined));
                         }
                     }
                 }

@@ -9,7 +9,7 @@
 //! search and short-circuits it entirely when the data is monomial-shaped.
 
 use crate::config::SearchConfig;
-use crate::core::build::{self, Monomial};
+use crate::core::build::{self, Feature, Monomial, Term};
 use crate::core::expression::Expression;
 use crate::ops::registry::OperatorRegistry;
 use rayon::prelude::*;
@@ -29,6 +29,9 @@ enum Transform {
     InvY,
     InvY2,
     Y2,
+    /// t = ln(1 + y), defined for y > -1. Linearizes `exp(m) - 1` shapes
+    /// (diode law, Bose-Einstein denominators after whitening).
+    Log1p,
 }
 
 const TRANSFORMS: &[Transform] = &[
@@ -37,6 +40,7 @@ const TRANSFORMS: &[Transform] = &[
     Transform::InvY,
     Transform::InvY2,
     Transform::Y2,
+    Transform::Log1p,
 ];
 
 /// Solves a dense linear least-squares system via normal equations.
@@ -226,7 +230,7 @@ fn refit_coeff(basis: &[f64], residual: &[f64]) -> Option<f64> {
 }
 
 /// Jointly refits the coefficients of `terms` against `target` (coeffs folded in).
-fn joint_refit(terms: &mut [Monomial], columns: &[Vec<f64>], target: &[f64]) -> Option<Vec<f64>> {
+fn joint_refit(terms: &mut [Term], columns: &[Vec<f64>], target: &[f64]) -> Option<Vec<f64>> {
     let n = target.len();
     let design: Vec<Vec<f64>> = (0..n)
         .map(|i| columns.iter().map(|c| c[i]).collect())
@@ -256,8 +260,8 @@ fn greedy_monomial_fit(
     target: &[f64],
     usable: &[usize],
     max_terms: usize,
-) -> Option<Vec<Monomial>> {
-    let mut terms: Vec<Monomial> = Vec::new();
+) -> Option<Vec<Term>> {
+    let mut terms: Vec<Term> = Vec::new();
     let mut unit_columns: Vec<Vec<f64>> = Vec::new();
     let mut residual = target.to_vec();
     let mut current_rmse = rms(&residual);
@@ -270,7 +274,7 @@ fn greedy_monomial_fit(
 
         // Pick the exponent rounding whose refitted single term reduces the
         // residual the most.
-        let mut best: Option<(Monomial, Vec<f64>, f64)> = None;
+        let mut best: Option<(Term, Vec<f64>, f64)> = None;
         for exps in exponent_candidates(&raw_exps) {
             let unit = Monomial {
                 coeff: 1.0,
@@ -292,9 +296,10 @@ fn greedy_monomial_fit(
             let err = rms(&new_res);
             if best.as_ref().map_or(true, |(_, _, e)| err < *e) {
                 best = Some((
-                    Monomial {
+                    Term {
                         coeff,
                         exponents: exps,
+                        feature: Feature::None,
                     },
                     column,
                     err,
@@ -333,28 +338,13 @@ fn greedy_monomial_fit(
 
 /// Enumerates monomial exponent vectors over `usable` variables, with a
 /// per-term active-variable cap chosen so the dictionary stays small.
-fn build_dictionary(
+fn enumerate_exponents(
     d: usize,
     usable: &[usize],
     exponent_set: &[f64],
-    max_active: usize,
-    size_limit: usize,
+    cap: usize,
 ) -> Vec<Vec<f64>> {
-    let mut cap = usable.len().min(max_active);
-    let dict_size = |cap: usize| -> usize {
-        let mut total = 1usize; // constant term
-        let mut choose = 1usize;
-        for k in 1..=cap {
-            choose = choose * (usable.len() - k + 1) / k;
-            total = total.saturating_add(choose.saturating_mul(exponent_set.len().pow(k as u32)));
-        }
-        total
-    };
-    while cap > 1 && dict_size(cap) > size_limit {
-        cap -= 1;
-    }
-
-    let mut dictionary: Vec<Vec<f64>> = vec![vec![0.0; d]]; // constant
+    let mut vectors: Vec<Vec<f64>> = vec![vec![0.0; d]]; // constant
     let mut stack: Vec<(usize, Vec<(usize, f64)>)> = vec![(0, Vec::new())];
     while let Some((start, active)) = stack.pop() {
         if !active.is_empty() {
@@ -362,7 +352,7 @@ fn build_dictionary(
             for &(j, e) in &active {
                 exps[j] = e;
             }
-            dictionary.push(exps);
+            vectors.push(exps);
         }
         if active.len() >= cap {
             continue;
@@ -375,21 +365,124 @@ fn build_dictionary(
             }
         }
     }
+    vectors
+}
+
+fn dict_size_estimate(n_usable: usize, n_exps: usize, cap: usize) -> usize {
+    let mut total = 1usize;
+    let mut choose = 1usize;
+    for k in 1..=cap.min(n_usable) {
+        choose = choose * (n_usable - k + 1) / k;
+        total = total.saturating_add(choose.saturating_mul(n_exps.pow(k as u32)));
+    }
+    total
+}
+
+fn build_dictionary(
+    d: usize,
+    usable: &[usize],
+    exponent_set: &[f64],
+    max_active: usize,
+    size_limit: usize,
+) -> Vec<Term> {
+    let mut cap = usable.len().min(max_active);
+    while cap > 1 && dict_size_estimate(usable.len(), exponent_set.len(), cap) > size_limit {
+        cap -= 1;
+    }
+    enumerate_exponents(d, usable, exponent_set, cap)
+        .into_iter()
+        .map(|exponents| Term {
+            coeff: 1.0,
+            exponents,
+            feature: Feature::None,
+        })
+        .collect()
+}
+
+/// Builds the feature-augmented dictionary: `monomial × feature` where the
+/// feature is a single-variable trig/log factor or a pairwise
+/// difference/product factor, and the monomial avoids the feature's own
+/// variables. The exponent set and active-variable cap of the monomial part
+/// are chosen adaptively to keep the dictionary under `size_limit` columns.
+fn build_feature_dictionary(d: usize, usable: &[usize], size_limit: usize) -> Vec<Term> {
+    let mut features: Vec<Feature> = Vec::new();
+    for &i in usable {
+        features.push(Feature::Sin(i));
+        features.push(Feature::Cos(i));
+        features.push(Feature::Sin2x(i));
+        features.push(Feature::Cos2x(i));
+        features.push(Feature::Ln(i));
+    }
+    for (a, &i) in usable.iter().enumerate() {
+        for &j in usable.iter().skip(a + 1) {
+            features.push(Feature::DiffSq(i, j));
+            features.push(Feature::CosDiff(i, j));
+            features.push(Feature::CosProd(i, j));
+            features.push(Feature::SinProd(i, j));
+        }
+    }
+    if features.is_empty() {
+        return Vec::new();
+    }
+
+    // Pick the richest monomial configuration that fits the budget.
+    const CONFIGS: &[(&[f64], usize)] = &[
+        (&[-3.0, -2.0, -1.0, 1.0, 2.0, 3.0], 3),
+        (&[-2.0, -1.0, 1.0, 2.0], 3),
+        (&[-2.0, -1.0, 1.0, 2.0], 2),
+        (&[-1.0, 1.0], 3),
+        (&[-1.0, 1.0], 2),
+        (&[-1.0, 1.0], 1),
+    ];
+    let per_feature_budget = size_limit / features.len();
+    let (exps, cap) = CONFIGS
+        .iter()
+        .find(|(e, c)| dict_size_estimate(usable.len(), e.len(), *c) <= per_feature_budget)
+        .copied()
+        .unwrap_or((&[-1.0, 1.0], 1));
+
+    let base = enumerate_exponents(d, usable, exps, cap.min(usable.len()));
+    let mut dictionary: Vec<Term> = Vec::with_capacity(base.len() * (features.len() + 1));
+    // Plain monomial columns must coexist with the augmented ones — mixed
+    // targets like q*Ef + q*B*v*sin(theta) need both kinds of terms.
+    for exponents in &base {
+        dictionary.push(Term {
+            coeff: 1.0,
+            exponents: exponents.clone(),
+            feature: Feature::None,
+        });
+    }
+    for feature in &features {
+        let fvars = feature.vars();
+        for exponents in &base {
+            if fvars.iter().any(|&v| exponents[v] != 0.0) {
+                continue; // keep the feature variable out of the monomial part
+            }
+            dictionary.push(Term {
+                coeff: 1.0,
+                exponents: exponents.clone(),
+                feature: feature.clone(),
+            });
+        }
+    }
     dictionary
 }
 
 /// Orthogonal-least-squares pursuit over dictionaries of standard-exponent
-/// monomials. Runs two dictionaries: a fractional-rich one (covers sqrt/cube
-/// laws) and an integer-only one — fractional "compromise" columns like
+/// monomials. Basic pass: a fractional-rich dictionary (covers sqrt/cube
+/// laws) plus an integer-only one — fractional "compromise" columns like
 /// x^0.5*y^0.5 otherwise trap the greedy selection when the target is a sum
 /// of several same-magnitude integer terms (e.g. x1*y1 + x2*y2 + x3*y3).
+/// Feature pass: the `monomial × feature` dictionary for targets the basic
+/// dictionaries cannot represent (trig/log/difference factors).
 fn omp_monomial_fit(
     inputs: &[Vec<f64>],
     target: &[f64],
     usable: &[usize],
     max_terms: usize,
     deadline: Option<Instant>,
-) -> Vec<Vec<Monomial>> {
+    with_features: bool,
+) -> Vec<Vec<Term>> {
     const FRACTIONAL: &[f64] = &[-3.0, -2.0, -1.0, -0.5, 0.5, 1.0, 2.0, 3.0];
     const INTEGER: &[f64] = &[-2.0, -1.0, 1.0, 2.0];
     let d = match inputs.first() {
@@ -400,16 +493,49 @@ fn omp_monomial_fit(
         return Vec::new();
     }
 
-    let mut results: Vec<Vec<Monomial>> = Vec::new();
-    for (exps, max_active) in [(FRACTIONAL, 4usize), (INTEGER, 3usize)] {
-        let dictionary = build_dictionary(d, usable, exps, max_active, 70_000);
-        results.extend(pursue_dictionary(
-            inputs,
-            target,
-            &dictionary,
-            max_terms,
-            deadline,
-        ));
+    let mut results: Vec<Vec<Term>> = Vec::new();
+    if with_features {
+        let dictionary = build_feature_dictionary(d, usable, 150_000);
+        if !dictionary.is_empty() {
+            results.extend(pursue_dictionary(
+                inputs,
+                target,
+                &dictionary,
+                max_terms,
+                deadline,
+            ));
+        }
+    } else {
+        for (exps, max_active) in [(FRACTIONAL, 4usize), (INTEGER, 5usize)] {
+            let mut dictionary = build_dictionary(d, usable, exps, max_active, 70_000);
+            if exps == INTEGER {
+                // Bare single-variable features ride along with the integer
+                // dictionary: mixed supports like ln(n0) - m*g*x/(kb*T)
+                // need a deep monomial AND a lone feature in one pursuit.
+                for &i in usable {
+                    for feature in [
+                        Feature::Sin(i),
+                        Feature::Cos(i),
+                        Feature::Sin2x(i),
+                        Feature::Cos2x(i),
+                        Feature::Ln(i),
+                    ] {
+                        dictionary.push(Term {
+                            coeff: 1.0,
+                            exponents: vec![0.0; d],
+                            feature,
+                        });
+                    }
+                }
+            }
+            results.extend(pursue_dictionary(
+                inputs,
+                target,
+                &dictionary,
+                max_terms,
+                deadline,
+            ));
+        }
     }
     results
 }
@@ -419,10 +545,10 @@ fn omp_monomial_fit(
 fn pursue_dictionary(
     inputs: &[Vec<f64>],
     target: &[f64],
-    dictionary: &[Vec<f64>],
+    dictionary: &[Term],
     max_terms: usize,
     deadline: Option<Instant>,
-) -> Vec<Vec<Monomial>> {
+) -> Vec<Vec<Term>> {
     // Deterministic subsample for the pursuit itself.
     let n = target.len();
     let sub_n = n.min(200);
@@ -431,19 +557,17 @@ fn pursue_dictionary(
     // Precompute normalized dictionary columns on the subsample.
     let columns: Vec<Option<(Vec<f64>, f64)>> = dictionary
         .par_iter()
-        .map(|exps| {
-            let mono = Monomial {
-                coeff: 1.0,
-                exponents: exps.clone(),
-            };
+        .map(|term| {
             let mut col = Vec::with_capacity(sub_idx.len());
             for &i in &sub_idx {
+                let row = &inputs[i];
                 let mut acc = 1.0f64;
-                for (x, &e) in inputs[i].iter().zip(&mono.exponents) {
+                for (x, &e) in row.iter().zip(&term.exponents) {
                     if e != 0.0 {
                         acc *= x.powf(e);
                     }
                 }
+                acc *= term.feature.eval_row(row);
                 if !acc.is_finite() {
                     return None;
                 }
@@ -643,14 +767,18 @@ fn pursue_dictionary(
     };
 
     // Full-data joint refit of a support set, followed by backward pruning:
-    // drop terms whose removal does not hurt the fit, so redundant
-    // "compromise" columns disappear from the final formula.
-    let finalize = |chosen: &[usize]| -> Option<Vec<Monomial>> {
-        let mut terms: Vec<Monomial> = chosen
+    // drop every term whose removal costs less than 25% extra RMSE (with an
+    // absolute floor at exactness level). True structural terms are
+    // catastrophic to remove, while the "compromise"/junk columns the greedy
+    // pursuit picked up barely matter — this is what keeps the output from
+    // degenerating into long Plus chains of near-useless monomials.
+    let finalize = |chosen: &[usize]| -> Option<(Vec<Term>, Option<Vec<Term>>)> {
+        let mut terms: Vec<Term> = chosen
             .iter()
-            .map(|&c| Monomial {
-                coeff: 1.0,
-                exponents: dictionary[c].clone(),
+            .map(|&c| {
+                let mut t = dictionary[c].clone();
+                t.coeff = 1.0;
+                t
             })
             .collect();
         let full_columns: Vec<Vec<f64>> = terms.iter().map(|t| t.eval_rows(inputs)).collect();
@@ -661,7 +789,10 @@ fn pursue_dictionary(
             return None;
         }
         let pred = joint_refit(&mut terms, &full_columns, target)?;
-        let mut best_rmse = rmse(&pred, target);
+        let full_scale = rms(target).max(1e-300);
+        let initial_rmse = rmse(&pred, target);
+        // A term survives only if removing it pushes the error above this.
+        let removal_tolerance = (initial_rmse * 1.25).max(1e-10 * full_scale);
 
         let mut keep: Vec<bool> = vec![true; terms.len()];
         for i in 0..terms.len() {
@@ -669,7 +800,7 @@ fn pursue_dictionary(
                 break;
             }
             keep[i] = false;
-            let mut trial: Vec<Monomial> = terms
+            let mut trial: Vec<Term> = terms
                 .iter()
                 .zip(&keep)
                 .filter(|(_, &k)| k)
@@ -684,16 +815,14 @@ fn pursue_dictionary(
             match joint_refit(&mut trial, &trial_cols, target) {
                 Some(pred) => {
                     let err = rmse(&pred, target);
-                    if err <= best_rmse * (1.0 + 1e-9) || err < 1e-13 * scale {
-                        best_rmse = best_rmse.min(err);
-                    } else {
+                    if err > removal_tolerance {
                         keep[i] = true;
                     }
                 }
                 None => keep[i] = true,
             }
         }
-        let mut pruned: Vec<Monomial> = terms
+        let mut pruned: Vec<Term> = terms
             .iter()
             .zip(&keep)
             .filter(|(_, &k)| k)
@@ -707,22 +836,34 @@ fn pursue_dictionary(
             .filter(|(_, &k)| k)
             .map(|(c, _)| c.clone())
             .collect();
-        joint_refit(&mut pruned, &pruned_cols, target)?;
-        Some(pruned)
+        let pruned_pred = joint_refit(&mut pruned, &pruned_cols, target)?;
+        // If pruning measurably worsened the fit, also keep the unpruned
+        // version so the best-RMSE candidate is never lost — the pruned one
+        // still wins on readability whenever the errors tie.
+        let pruned_rmse = rmse(&pruned_pred, target);
+        let fallback = if pruned.len() < terms.len() && pruned_rmse > initial_rmse * 1.01 {
+            Some(terms)
+        } else {
+            None
+        };
+        Some((pruned, fallback))
     };
 
     // Try both seeding strategies and keep every distinct outcome: sums of
     // structural terms favor the unseeded start, near-constant targets
     // (offsets, Lorentz-style 1 - x) need the constant-seeded start.
-    let mut results: Vec<Vec<Monomial>> = Vec::new();
+    let mut results: Vec<Vec<Term>> = Vec::new();
     for seed_constant in [false, true] {
         let chosen = select(seed_constant);
         if chosen.is_empty() {
             continue;
         }
         let chosen = backfit(chosen);
-        if let Some(terms) = finalize(&chosen) {
-            results.push(terms);
+        if let Some((pruned, fallback)) = finalize(&chosen) {
+            results.push(pruned);
+            if let Some(unpruned) = fallback {
+                results.push(unpruned);
+            }
         }
     }
     results
@@ -741,7 +882,7 @@ fn transform_target(t: Transform, ys_abs: &[f64]) -> Option<Vec<f64>> {
         return None;
     }
     let vals: Vec<f64> = match t {
-        Transform::Id => return Some(ys_abs.to_vec()),
+        Transform::Id | Transform::Log1p => return Some(ys_abs.to_vec()),
         Transform::Log => ys_abs.iter().map(|&y| y.ln()).collect(),
         Transform::InvY => ys_abs.iter().map(|&y| 1.0 / y).collect(),
         Transform::InvY2 => ys_abs.iter().map(|&y| 1.0 / (y * y)).collect(),
@@ -774,6 +915,7 @@ fn invert_prediction(t: Transform, m: f64) -> f64 {
                 f64::NAN
             }
         }
+        Transform::Log1p => m.exp_m1(),
     }
 }
 
@@ -790,6 +932,12 @@ fn invert_expression(
         Transform::InvY => build::unary("Inv", m_expr, reg),
         Transform::InvY2 => build::unary("Inv", build::unary("Sqrt", m_expr, reg), reg),
         Transform::Y2 => build::unary("Sqrt", m_expr, reg),
+        Transform::Log1p => build::binary(
+            "Subtract",
+            build::unary("Exp", m_expr, reg),
+            build::num(1.0),
+            reg,
+        ),
     };
     if negate {
         build::unary("Neg", inner, reg)
@@ -821,7 +969,86 @@ fn expression_rmse(
     (acc / ys.len() as f64).sqrt()
 }
 
+/// Prepares the (transform, target, negate) triples valid for this dataset.
+fn prepare_targets(ys: &[f64]) -> Vec<(Transform, Vec<f64>, bool)> {
+    let all_pos = ys.iter().all(|&y| y > 0.0);
+    let all_neg = ys.iter().all(|&y| y < 0.0);
+    let ys_abs: Vec<f64> = ys.iter().map(|y| y.abs()).collect();
+
+    let mut out = Vec::new();
+    for &t in TRANSFORMS {
+        match t {
+            Transform::Id => out.push((t, ys.to_vec(), false)),
+            Transform::Log1p => {
+                // Signed target; defined for 1 + y bounded away from zero.
+                let shifted_ok = ys.iter().all(|&y| 1.0 + y > 1e-9);
+                if shifted_ok {
+                    let vals: Vec<f64> = ys.iter().map(|&y| y.ln_1p()).collect();
+                    if vals.iter().all(|v| v.is_finite()) {
+                        out.push((t, vals, false));
+                    }
+                }
+            }
+            _ => {
+                if all_pos || all_neg {
+                    if let Some(vals) = transform_target(t, &ys_abs) {
+                        out.push((t, vals, all_neg));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Validates a term-sum candidate on the full data and assembles the tree.
+fn validate_and_assemble(
+    t: Transform,
+    negate: bool,
+    terms: &[Term],
+    inputs: &[Vec<f64>],
+    ys: &[f64],
+    reg: &OperatorRegistry,
+    fits: &mut Vec<PowerlawFit>,
+) {
+    // Quick numeric validation before assembling the tree.
+    let m_pred: Vec<f64> = {
+        let cols: Vec<Vec<f64>> = terms.iter().map(|t| t.eval_rows(inputs)).collect();
+        (0..ys.len())
+            .map(|i| cols.iter().map(|c| c[i]).sum::<f64>())
+            .collect()
+    };
+    let y_pred: Vec<f64> = m_pred
+        .iter()
+        .map(|&m| {
+            let v = invert_prediction(t, m);
+            if negate {
+                -v
+            } else {
+                v
+            }
+        })
+        .collect();
+    if !rmse(&y_pred, ys).is_finite() {
+        return;
+    }
+
+    let expr = invert_expression(t, build::term_sum_expression(terms, reg), negate, reg);
+    let err = expression_rmse(&expr, inputs, ys, reg);
+    if err.is_finite() {
+        fits.push(PowerlawFit {
+            expression: expr,
+            error: err,
+        });
+    }
+}
+
 /// Runs the full Stage A pipeline. Returns candidate fits sorted by error.
+///
+/// Two passes: the basic monomial dictionaries run first (they solve the
+/// bulk of physics formulas in milliseconds); the much larger
+/// monomial-times-feature dictionary only runs when the basic pass failed to
+/// reach exactness.
 pub fn run_powerlaw(
     inputs: &[Vec<f64>],
     ys: &[f64],
@@ -834,74 +1061,53 @@ pub fn run_powerlaw(
         return fits;
     }
     let usable = usable_variables(inputs);
+    let targets = prepare_targets(ys);
+    let y_std = {
+        let mean = ys.iter().sum::<f64>() / ys.len() as f64;
+        (ys.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / ys.len() as f64).sqrt()
+    }
+    .max(1e-30);
+    let exact = |err: f64| err <= 1e-9 * y_std;
 
-    // Sign folding for non-identity transforms.
-    let all_pos = ys.iter().all(|&y| y > 0.0);
-    let all_neg = ys.iter().all(|&y| y < 0.0);
-    let ys_abs: Vec<f64> = ys.iter().map(|y| y.abs()).collect();
-
-    for &t in TRANSFORMS {
-        if let Some(dl) = deadline {
-            if Instant::now() >= dl {
-                break;
-            }
+    // ---- Pass 1: greedy log-fit boosting + basic monomial dictionaries ----
+    for (t, t_target, negate) in &targets {
+        if deadline.map_or(false, |dl| Instant::now() >= dl) {
+            break;
         }
-        let (t_target, negate) = if t == Transform::Id {
-            (Some(ys.to_vec()), false)
-        } else if all_pos || all_neg {
-            (transform_target(t, &ys_abs), all_neg)
-        } else {
-            (None, false)
-        };
-        let t_target = match t_target {
-            Some(v) => v,
-            None => continue,
-        };
-
-        let mut candidates: Vec<Vec<Monomial>> = Vec::new();
-        if let Some(terms) = greedy_monomial_fit(inputs, &t_target, &usable, config.max_boost_terms)
+        let mut candidates: Vec<Vec<Term>> = Vec::new();
+        if let Some(terms) = greedy_monomial_fit(inputs, t_target, &usable, config.max_boost_terms)
         {
             candidates.push(terms);
         }
         candidates.extend(omp_monomial_fit(
             inputs,
-            &t_target,
+            t_target,
             &usable,
             config.max_boost_terms,
             deadline,
+            false,
         ));
-
         for terms in candidates {
-            // Quick numeric validation before assembling the tree.
-            let m_pred: Vec<f64> = {
-                let cols: Vec<Vec<f64>> = terms.iter().map(|t| t.eval_rows(inputs)).collect();
-                (0..ys.len())
-                    .map(|i| cols.iter().map(|c| c[i]).sum::<f64>())
-                    .collect()
-            };
-            let y_pred: Vec<f64> = m_pred
-                .iter()
-                .map(|&m| {
-                    let v = invert_prediction(t, m);
-                    if negate {
-                        -v
-                    } else {
-                        v
-                    }
-                })
-                .collect();
-            let quick_err = rmse(&y_pred, ys);
-            if !quick_err.is_finite() {
-                continue;
-            }
+            validate_and_assemble(*t, *negate, &terms, inputs, ys, reg, &mut fits);
+        }
+    }
 
-            let expr = invert_expression(t, build::monomial_sum_expression(&terms, reg), negate, reg);
-            let err = expression_rmse(&expr, inputs, ys, reg);
-            if err.is_finite() {
-                fits.push(PowerlawFit {
-                    expression: expr,
-                    error: err,
-                });
+    // ---- Pass 2: feature-augmented dictionary, only when still unsolved ----
+    let best_so_far = fits.iter().map(|f| f.error).fold(f64::INFINITY, f64::min);
+    if !exact(best_so_far) {
+        for (t, t_target, negate) in &targets {
+            if deadline.map_or(false, |dl| Instant::now() >= dl) {
+                break;
+            }
+            for terms in omp_monomial_fit(
+                inputs,
+                t_target,
+                &usable,
+                config.max_boost_terms,
+                deadline,
+                true,
+            ) {
+                validate_and_assemble(*t, *negate, &terms, inputs, ys, reg, &mut fits);
             }
         }
     }
@@ -910,20 +1116,98 @@ pub fn run_powerlaw(
     fits
 }
 
-/// Best single-monomial "whitener" for Stage C: fits `y ≈ c * prod x^a` and
-/// returns the monomial (rounded exponents preferred when they fit as well).
+/// Best single-monomial "whitener" for Stage C: fits `|y| ≈ c * prod x^a`
+/// and returns the monomial (rounded exponents preferred when they fit as
+/// well). Working on |y| deliberately supports mixed-sign targets like
+/// G*m1*m2*(1/r2 - 1/r1): the sign structure stays in the ratio, which the
+/// downstream searches handle natively.
 pub fn best_monomial_whitener(inputs: &[Vec<f64>], ys: &[f64]) -> Option<Monomial> {
+    monomial_whitener_candidates(inputs, ys).into_iter().next()
+}
+
+/// All plausible whitener monomials, best whitening score first. The log-fit
+/// exponents are ambiguous when the non-monomial factor correlates with some
+/// variables (e.g. n*kb*T*ln(V2/V1) leaks exponent mass onto V1/V2), so the
+/// caller should probe the leading few candidates rather than trust one.
+pub fn monomial_whitener_candidates(inputs: &[Vec<f64>], ys: &[f64]) -> Vec<Monomial> {
+    let mut scored = whitener_candidates_scored(inputs, ys);
+    scored.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    scored.into_iter().map(|(m, _)| m).collect()
+}
+
+fn whitener_candidates_scored(inputs: &[Vec<f64>], ys: &[f64]) -> Vec<(Monomial, f64)> {
     if inputs.len() < 10 || inputs[0].is_empty() {
-        return None;
+        return Vec::new();
     }
     let usable = usable_variables(inputs);
     if usable.is_empty() {
-        return None;
+        return Vec::new();
     }
-    let (raw_exps, _) = fit_monomial_log(inputs, ys, &usable)?;
+    let ys_abs: Vec<f64> = ys.iter().map(|y| y.abs()).collect();
+    let raw_exps = match fit_monomial_log(inputs, &ys_abs, &usable) {
+        Some((e, _)) => e,
+        None => return Vec::new(),
+    };
 
-    let mut best: Option<(Monomial, f64)> = None;
-    for exps in exponent_candidates(&raw_exps) {
+    // Rounded variants of the raw fit, plus per-variable zeroing of the
+    // integer rounding: a non-monomial factor often leaks fractional
+    // exponent mass onto its own variables, and zeroing them one at a time
+    // recovers the clean whitener.
+    let mut exps_candidates = exponent_candidates(&raw_exps);
+    let den1: Vec<f64> = raw_exps
+        .iter()
+        .map(|&e| {
+            let r = e.round();
+            if r.abs() < 1e-9 {
+                0.0
+            } else {
+                r
+            }
+        })
+        .collect();
+    for j in 0..den1.len() {
+        if den1[j] != 0.0 {
+            let mut z = den1.clone();
+            z[j] = 0.0;
+            if !exps_candidates.contains(&z) {
+                exps_candidates.push(z);
+            }
+        }
+    }
+    // Zero every |exponent| < 1 in the raw fit (keeps only confident vars).
+    let confident: Vec<f64> = raw_exps
+        .iter()
+        .map(|&e| {
+            let r = e.round();
+            if e.abs() < 0.6 || r.abs() < 1e-9 {
+                0.0
+            } else {
+                r
+            }
+        })
+        .collect();
+    if !exps_candidates.contains(&confident) {
+        exps_candidates.push(confident);
+    }
+    // Keep only near-unit exponents: a log-like factor ln(V2/V1) leaks large
+    // symmetric exponents onto its own variables while the true monomial
+    // factor keeps clean ±1 entries (e.g. n*kb*T*ln(V2/V1)).
+    let unit_only: Vec<f64> = raw_exps
+        .iter()
+        .map(|&e| {
+            if (e.abs() - 1.0).abs() <= 0.35 {
+                e.signum()
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    if !exps_candidates.contains(&unit_only) {
+        exps_candidates.push(unit_only);
+    }
+
+    let mut scored: Vec<(Monomial, f64)> = Vec::new();
+    for exps in exps_candidates {
         if exps.iter().all(|&e| e == 0.0) {
             continue;
         }
@@ -935,7 +1219,10 @@ pub fn best_monomial_whitener(inputs: &[Vec<f64>], ys: &[f64]) -> Option<Monomia
         if column.iter().any(|v| !v.is_finite() || v.abs() < 1e-300) {
             continue;
         }
-        let coeff = refit_coeff(&column, ys)?;
+        let coeff = match refit_coeff(&column, &ys_abs) {
+            Some(c) => c,
+            None => continue,
+        };
         if coeff.abs() < 1e-300 {
             continue;
         }
@@ -961,17 +1248,15 @@ pub fn best_monomial_whitener(inputs: &[Vec<f64>], ys: &[f64]) -> Option<Monomia
             .map(|e| if (e * 2.0).fract().abs() < 1e-9 { 0.0 } else { 0.05 })
             .sum::<f64>();
         let score = var.sqrt() + complexity_bonus;
-        if best.as_ref().map_or(true, |(_, s)| score < *s) {
-            best = Some((
-                Monomial {
-                    coeff,
-                    exponents: exps,
-                },
-                score,
-            ));
-        }
+        scored.push((
+            Monomial {
+                coeff,
+                exponents: exps,
+            },
+            score,
+        ));
     }
-    best.map(|(m, _)| m)
+    scored
 }
 
 #[cfg(test)]
@@ -1079,3 +1364,81 @@ mod tests {
 }
 
 
+
+#[cfg(test)]
+mod feature_tests {
+    use super::*;
+    use crate::ops::registry::OperatorRegistry;
+
+    fn grid2() -> (Vec<Vec<f64>>, OperatorRegistry) {
+        let mut inputs = Vec::new();
+        for i in 1..=20 {
+            for j in 1..=20 {
+                inputs.push(vec![1.0 + i as f64 * 0.2, 1.0 + j as f64 * 0.15]);
+            }
+        }
+        (inputs, OperatorRegistry::with_builtins())
+    }
+
+    fn best_error(inputs: &[Vec<f64>], ys: &[f64]) -> f64 {
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(inputs, ys, &cfg, &reg, None);
+        fits.first().map(|f| f.error).unwrap_or(f64::INFINITY)
+    }
+
+    #[test]
+    fn recovers_monomial_times_sin() {
+        // y = q*Ef + q*B*v*sin(theta) shape (I.12.11): x0*3 + x0*x1*sin(x1)?
+        // keep it 2-var: y = 2*x0 + 0.5*x0*x1*... use sin on x1.
+        let (inputs, _reg) = grid2();
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| 2.0 * r[0] + 1.5 * r[0] * r[1].sin())
+            .collect();
+        let scale = rms(&ys);
+        let err = best_error(&inputs, &ys);
+        assert!(err < 1e-8 * scale, "error too large: {err}");
+    }
+
+    #[test]
+    fn recovers_sqrt_of_diff_squares() {
+        // y = sqrt((x0-x1)^2 + 4) shape via Y2 transform + DiffSq feature.
+        let (inputs, _reg) = grid2();
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| ((r[0] - r[1]).powi(2) + 4.0).sqrt())
+            .collect();
+        let scale = rms(&ys);
+        let err = best_error(&inputs, &ys);
+        assert!(err < 1e-8 * scale, "error too large: {err}");
+    }
+
+    #[test]
+    fn recovers_monomial_times_ln() {
+        // y = 3*x0*ln(x1) (I.44.4 shape).
+        let (inputs, _reg) = grid2();
+        let ys: Vec<f64> = inputs.iter().map(|r| 3.0 * r[0] * r[1].ln()).collect();
+        let scale = rms(&ys);
+        let err = best_error(&inputs, &ys);
+        assert!(err < 1e-8 * scale, "error too large: {err}");
+    }
+
+    #[test]
+    fn recovers_exp_minus_one_via_log1p() {
+        // y = exp(0.5*x0*x1) - 1 (III.14.14 ratio shape).
+        let mut inputs = Vec::new();
+        for i in 1..=20 {
+            for j in 1..=20 {
+                inputs.push(vec![0.1 + i as f64 * 0.05, 0.1 + j as f64 * 0.05]);
+            }
+        }
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| (0.5 * r[0] * r[1]).exp_m1())
+            .collect();
+        let scale = rms(&ys);
+        let err = best_error(&inputs, &ys);
+        assert!(err < 1e-8 * scale, "error too large: {err}");
+    }
+}
