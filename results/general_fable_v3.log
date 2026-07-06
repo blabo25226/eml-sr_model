@@ -1,0 +1,27 @@
+==============================================================
+  EML-SR Fable: General (non-Feynman) benchmark  [v3]
+  20 synthetic equations, holdout 250 points
+==============================================================
+[01/20] poly3        (polynomial) status=failed  test_rmse=1.564e-01 t=4.1s
+[02/20] poly_cross   (polynomial) status=ok      test_rmse=2.053e-16 t=0.0s
+[03/20] nguyen5      (trig-comp ) status=ok      test_rmse=3.846e-17 t=3.9s
+[04/20] nguyen6      (trig-comp ) status=failed  test_rmse=9.686e-02 t=5.2s
+[05/20] nguyen7      (log       ) status=ok      test_rmse=7.273e-06 t=9.8s
+[06/20] rational1    (rational  ) status=ok      test_rmse=4.487e-15 t=0.3s
+[07/20] rational2    (rational  ) status=ok      test_rmse=6.114e-16 t=0.0s
+[08/20] rational3    (rational  ) status=ok      test_rmse=2.041e-15 t=0.3s
+[09/20] shifted_inv  (rational  ) status=ok      test_rmse=1.362e-14 t=0.0s
+[10/20] logistic1    (logistic  ) status=ok      test_rmse=9.919e-17 t=0.1s
+[11/20] logistic2    (logistic  ) status=ok      test_rmse=5.205e-16 t=0.1s
+[12/20] tanh_sum     (logistic  ) status=ok      test_rmse=9.928e-17 t=0.4s
+[13/20] saturation   (exp       ) status=ok      test_rmse=3.714e-08 t=10.8s
+[14/20] exp_decay    (exp       ) status=ok      test_rmse=1.469e-14 t=0.0s
+[15/20] mixed_prod   (mixed     ) status=ok      test_rmse=8.568e-17 t=1.2s
+[16/20] sine_amp     (mixed     ) status=ok      test_rmse=0.000e+00 t=0.3s
+[17/20] gauss2d      (exp       ) status=ok      test_rmse=3.861e-16 t=0.1s
+[18/20] diff_sq      (polynomial) status=ok      test_rmse=8.977e-15 t=0.0s
+[19/20] cos_diff     (trig-comp ) status=ok      test_rmse=3.853e-15 t=0.0s
+[20/20] sqrt_sum     (mixed     ) status=ok      test_rmse=1.750e-15 t=0.1s
+
+SUMMARY: 18/20 ok  (0.6 min)
+Report: /home/user/eml-sr_model/texts/eml_sr_fable_general_v3_report.md
