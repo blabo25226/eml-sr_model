@@ -171,6 +171,10 @@ pub enum Feature {
     CosProd(usize, usize),
     /// sin(x_i * x_j)
     SinProd(usize, usize),
+    /// cos(2 x_i x_j) — covers cos²/sin² of a product via double angle
+    Cos2Prod(usize, usize),
+    /// sin(2 x_i x_j)
+    Sin2Prod(usize, usize),
 }
 
 impl Feature {
@@ -187,7 +191,9 @@ impl Feature {
             Feature::DiffSq(i, j)
             | Feature::CosDiff(i, j)
             | Feature::CosProd(i, j)
-            | Feature::SinProd(i, j) => vec![i, j],
+            | Feature::SinProd(i, j)
+            | Feature::Cos2Prod(i, j)
+            | Feature::Sin2Prod(i, j) => vec![i, j],
         }
     }
 
@@ -207,6 +213,8 @@ impl Feature {
             Feature::CosDiff(i, j) => (row[i] - row[j]).cos(),
             Feature::CosProd(i, j) => (row[i] * row[j]).cos(),
             Feature::SinProd(i, j) => (row[i] * row[j]).sin(),
+            Feature::Cos2Prod(i, j) => (2.0 * row[i] * row[j]).cos(),
+            Feature::Sin2Prod(i, j) => (2.0 * row[i] * row[j]).sin(),
         }
     }
 
@@ -227,6 +235,16 @@ impl Feature {
             }
             Feature::CosProd(i, j) => unary("Cos", binary("Times", var(i), var(j), reg), reg),
             Feature::SinProd(i, j) => unary("Sin", binary("Times", var(i), var(j), reg), reg),
+            Feature::Cos2Prod(i, j) => unary(
+                "Cos",
+                binary("Times", num(2.0), binary("Times", var(i), var(j), reg), reg),
+                reg,
+            ),
+            Feature::Sin2Prod(i, j) => unary(
+                "Sin",
+                binary("Times", num(2.0), binary("Times", var(i), var(j), reg), reg),
+                reg,
+            ),
         })
     }
 }
