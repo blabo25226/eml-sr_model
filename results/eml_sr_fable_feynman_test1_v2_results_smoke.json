@@ -1,0 +1,151 @@
+{
+  "total": 3,
+  "ok": 3,
+  "skipped": 0,
+  "failed": 0,
+  "partial": 0,
+  "total_elapsed_s": 0.18019318580627441,
+  "comparisons": {
+    "first_AI": {
+      "baseline_ok_count": 3,
+      "delta_ok": 0,
+      "new_ok_ids": [],
+      "lost_ok_ids": []
+    },
+    "cursor": {
+      "baseline_ok_count": 3,
+      "delta_ok": 0,
+      "new_ok_ids": [],
+      "lost_ok_ids": []
+    },
+    "fable_v1": {
+      "baseline_ok_count": 3,
+      "delta_ok": 0,
+      "new_ok_ids": [],
+      "lost_ok_ids": []
+    }
+  },
+  "settings": {
+    "max_complexity": 6,
+    "complexity_penalty": 0.08,
+    "beam_width": 1000,
+    "time_budget_s": 110.0,
+    "subsample_size": 256,
+    "early_exit_threshold": 1e-09,
+    "refinement_top_k": 8,
+    "snap_constants": true,
+    "powerlaw_stage": true,
+    "ratio_search": true,
+    "affine_scaling": true,
+    "max_boost_terms": 6,
+    "verbose": false,
+    "N_SAMPLES": 750,
+    "RMSE_THRESHOLD": 0.0001,
+    "RMSE_PARTIAL": 0.01
+  },
+  "results": [
+    {
+      "eq_id": "I.12.1",
+      "status": "ok",
+      "found_formula": "Times(v_{0}, v_{1})",
+      "found_python": "(v_{0})*(v_{1})",
+      "rmse": 0.0,
+      "complexity": 3,
+      "elapsed_s": 0.03461265563964844,
+      "candidates": [
+        {
+          "formula": "Times(v_{0}, v_{1})",
+          "python": "(v_{0})*(v_{1})",
+          "complexity": 3,
+          "rmse": 0.0,
+          "error": 0.0
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(v_{0}, v_{1})",
+          "python": "(v_{0})*(v_{1})",
+          "complexity": 3,
+          "rmse": 0.0,
+          "error": 0.0
+        }
+      ],
+      "index": 1,
+      "csv_index": 8,
+      "n_vars": 2,
+      "var_names": [
+        "mu",
+        "Nn"
+      ]
+    },
+    {
+      "eq_id": "I.12.5",
+      "status": "ok",
+      "found_formula": "Times(v_{0}, v_{1})",
+      "found_python": "(v_{0})*(v_{1})",
+      "rmse": 0.0,
+      "complexity": 3,
+      "elapsed_s": 0.032898664474487305,
+      "candidates": [
+        {
+          "formula": "Times(v_{0}, v_{1})",
+          "python": "(v_{0})*(v_{1})",
+          "complexity": 3,
+          "rmse": 0.0,
+          "error": 0.0
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(v_{0}, v_{1})",
+          "python": "(v_{0})*(v_{1})",
+          "complexity": 3,
+          "rmse": 0.0,
+          "error": 0.0
+        }
+      ],
+      "index": 2,
+      "csv_index": 11,
+      "n_vars": 2,
+      "var_names": [
+        "q2",
+        "Ef"
+      ]
+    },
+    {
+      "eq_id": "I.14.3",
+      "status": "ok",
+      "found_formula": "Times(Times(v_{0}, v_{1}), v_{2})",
+      "found_python": "((v_{0})*(v_{1}))*(v_{2})",
+      "rmse": 0.0,
+      "complexity": 5,
+      "elapsed_s": 0.08176398277282715,
+      "candidates": [
+        {
+          "formula": "Times(Times(v_{0}, v_{1}), v_{2})",
+          "python": "((v_{0})*(v_{1}))*(v_{2})",
+          "complexity": 5,
+          "rmse": 0.0,
+          "error": 0.0
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "Times(Times(v_{0}, v_{1}), v_{2})",
+          "python": "((v_{0})*(v_{1}))*(v_{2})",
+          "complexity": 5,
+          "rmse": 0.0,
+          "error": 0.0
+        }
+      ],
+      "index": 3,
+      "csv_index": 15,
+      "n_vars": 3,
+      "var_names": [
+        "m",
+        "g",
+        "z"
+      ]
+    }
+  ]
+}
