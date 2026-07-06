@@ -145,6 +145,163 @@ impl Monomial {
     }
 }
 
+/// A multiplicative non-monomial factor attached to a dictionary term.
+///
+/// These cover the factor shapes that dominate the physics formulas a pure
+/// monomial dictionary cannot express: single-variable trig/log factors and
+/// pairwise difference / product factors.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Feature {
+    None,
+    /// sin(x_i)
+    Sin(usize),
+    /// cos(x_i)
+    Cos(usize),
+    /// sin(2 x_i) — also covers sin·cos via the double-angle identity
+    Sin2x(usize),
+    /// cos(2 x_i) — also covers sin²/cos² via the double-angle identity
+    Cos2x(usize),
+    /// ln(x_i)
+    Ln(usize),
+    /// (x_i - x_j)^2
+    DiffSq(usize, usize),
+    /// cos(x_i - x_j)
+    CosDiff(usize, usize),
+    /// cos(x_i * x_j)
+    CosProd(usize, usize),
+    /// sin(x_i * x_j)
+    SinProd(usize, usize),
+}
+
+impl Feature {
+    /// Variables referenced by the feature (used to avoid overlapping the
+    /// monomial part).
+    pub fn vars(&self) -> Vec<usize> {
+        match *self {
+            Feature::None => vec![],
+            Feature::Sin(i)
+            | Feature::Cos(i)
+            | Feature::Sin2x(i)
+            | Feature::Cos2x(i)
+            | Feature::Ln(i) => vec![i],
+            Feature::DiffSq(i, j)
+            | Feature::CosDiff(i, j)
+            | Feature::CosProd(i, j)
+            | Feature::SinProd(i, j) => vec![i, j],
+        }
+    }
+
+    /// Evaluates the feature on one data row.
+    pub fn eval_row(&self, row: &[f64]) -> f64 {
+        match *self {
+            Feature::None => 1.0,
+            Feature::Sin(i) => row[i].sin(),
+            Feature::Cos(i) => row[i].cos(),
+            Feature::Sin2x(i) => (2.0 * row[i]).sin(),
+            Feature::Cos2x(i) => (2.0 * row[i]).cos(),
+            Feature::Ln(i) => row[i].ln(),
+            Feature::DiffSq(i, j) => {
+                let d = row[i] - row[j];
+                d * d
+            }
+            Feature::CosDiff(i, j) => (row[i] - row[j]).cos(),
+            Feature::CosProd(i, j) => (row[i] * row[j]).cos(),
+            Feature::SinProd(i, j) => (row[i] * row[j]).sin(),
+        }
+    }
+
+    /// Builds the expression tree for the feature factor.
+    pub fn to_expression(&self, reg: &OperatorRegistry) -> Option<Expression> {
+        Some(match *self {
+            Feature::None => return None,
+            Feature::Sin(i) => unary("Sin", var(i), reg),
+            Feature::Cos(i) => unary("Cos", var(i), reg),
+            Feature::Sin2x(i) => unary("Sin", binary("Times", num(2.0), var(i), reg), reg),
+            Feature::Cos2x(i) => unary("Cos", binary("Times", num(2.0), var(i), reg), reg),
+            Feature::Ln(i) => unary("Log", var(i), reg),
+            Feature::DiffSq(i, j) => {
+                unary("Square", binary("Subtract", var(i), var(j), reg), reg)
+            }
+            Feature::CosDiff(i, j) => {
+                unary("Cos", binary("Subtract", var(i), var(j), reg), reg)
+            }
+            Feature::CosProd(i, j) => unary("Cos", binary("Times", var(i), var(j), reg), reg),
+            Feature::SinProd(i, j) => unary("Sin", binary("Times", var(i), var(j), reg), reg),
+        })
+    }
+}
+
+/// One dictionary term `coeff * prod_i v_i^{exponents[i]} * feature`.
+#[derive(Clone, Debug)]
+pub struct Term {
+    pub coeff: f64,
+    pub exponents: Vec<f64>,
+    pub feature: Feature,
+}
+
+impl Term {
+    pub fn from_monomial(m: &Monomial) -> Self {
+        Self {
+            coeff: m.coeff,
+            exponents: m.exponents.clone(),
+            feature: Feature::None,
+        }
+    }
+
+    /// Evaluates the term on a full data matrix (rows = samples).
+    pub fn eval_rows(&self, inputs: &[Vec<f64>]) -> Vec<f64> {
+        inputs
+            .iter()
+            .map(|row| {
+                let mut acc = self.coeff;
+                for (x, &e) in row.iter().zip(&self.exponents) {
+                    if e != 0.0 {
+                        acc *= x.powf(e);
+                    }
+                }
+                acc * self.feature.eval_row(row)
+            })
+            .collect()
+    }
+
+    /// Builds the expression tree for this term.
+    pub fn to_expression(&self, reg: &OperatorRegistry) -> Expression {
+        let feature_expr = self.feature.to_expression(reg);
+        let mono = Monomial {
+            coeff: self.coeff,
+            exponents: self.exponents.clone(),
+        };
+        match feature_expr {
+            None => mono.to_expression(reg),
+            Some(feat) => {
+                let coeff_is_one = (self.coeff - 1.0).abs() < 1e-15;
+                let mono_is_const = self.exponents.iter().all(|&e| e == 0.0);
+                if mono_is_const && coeff_is_one {
+                    feat
+                } else if mono_is_const {
+                    binary("Times", num(self.coeff), feat, reg)
+                } else {
+                    binary("Times", mono.to_expression(reg), feat, reg)
+                }
+            }
+        }
+    }
+}
+
+/// Sums a list of terms into one expression tree.
+pub fn term_sum_expression(terms: &[Term], reg: &OperatorRegistry) -> Expression {
+    assert!(!terms.is_empty());
+    let mut expr: Option<Expression> = None;
+    for term in terms {
+        let term_expr = term.to_expression(reg);
+        expr = Some(match expr.take() {
+            None => term_expr,
+            Some(prev) => binary("Plus", prev, term_expr, reg),
+        });
+    }
+    expr.unwrap()
+}
+
 /// Sums a list of monomials into one expression tree.
 pub fn monomial_sum_expression(terms: &[Monomial], reg: &OperatorRegistry) -> Expression {
     assert!(!terms.is_empty());
