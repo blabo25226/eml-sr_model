@@ -518,7 +518,9 @@ fn omp_monomial_fit(
     with_features: bool,
 ) -> Vec<Vec<Term>> {
     const FRACTIONAL: &[f64] = &[-3.0, -2.0, -1.0, -0.5, 0.5, 1.0, 2.0, 3.0];
-    const INTEGER: &[f64] = &[-2.0, -1.0, 1.0, 2.0];
+    // Cubes must be available for mixed-sign variables too (x^3 on (-3,3)
+    // cannot come from the positive-only fractional dictionary).
+    const INTEGER: &[f64] = &[-3.0, -2.0, -1.0, 1.0, 2.0, 3.0];
     let d = match inputs.first() {
         Some(row) => row.len(),
         None => return Vec::new(),
