@@ -381,3 +381,28 @@
   RMSE:   1.118e-06  Status: ok  Time: 23.16s
 
 [096/99] III.15.27  (vars=3)
+  Found:  Times(6.282991262806796, Divide(v_{0}, Times(v_{1}, v_{2})))
+  RMSE:   1.237e-04  Status: ok  Time: 22.16s
+
+[097/99] III.17.37  (vars=3)
+  Found:  Plus(Times(1.0009057356802074, v_{0}), Times(Times(1.0002559674769163, Times(v_{0}, v_{...
+  RMSE:   2.090e-03  Status: ok  Time: 25.45s
+
+[098/99] III.19.51  (vars=4)
+  [SKIP] too few valid samples
+
+[099/99] III.21.20  (vars=4)
+  Found:  Times(-1.0001770848365148, Divide(Times(Times(v_{0}, v_{1}), v_{2}), v_{3}))
+  RMSE:   2.528e-03  Status: ok  Time: 46.89s
+
+[INFO] Results saved to /home/user/eml-sr_model/results/eml_sr_fable_feynman_test1_v4_results.json
+[INFO] Report written to /home/user/eml-sr_model/texts/eml_sr_fable_feynman_test1_v4_report.md
+
+==============================================================
+  SUMMARY: 70 / 99 equations recovered
+  vs first_AI: delta_ok=61  lost=[]
+  vs cursor: delta_ok=57  lost=[]
+  vs fable_v1: delta_ok=7  lost=['I.10.7', 'I.15.1', 'I.48.2', 'II.13.23', 'II.13.34']
+  vs fable_v2: delta_ok=-10  lost=['I.10.7', 'I.13.12', 'I.15.1', 'I.34.14', 'I.40.1', 'I.41.16', 'I.48.2', 'II.13.23', 'II.13.34', 'II.2.42', 'II.6.15a', 'III.14.14']
+  Total time: 3837.3s (64.0min)
+==============================================================
