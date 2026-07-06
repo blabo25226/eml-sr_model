@@ -6,403 +6,66 @@
 
 [001/99] I.6.2a  (vars=1)
   Found:  Plus(Times(0.39894986334608257, Sqrt(Exp(Neg(Square(v_{0}))))), -0.000024987630854594878)
-  RMSE:   2.361e-05  Status: ok  Time: 10.07s
+  RMSE:   2.361e-05  Status: ok  Time: 10.40s
 
 [002/99] I.6.2  (vars=2)
   Found:  Exp(Plus(Plus(-0.9173886314333668, Times(-0.500506602686162, Divide(Square(v_{1}), Squa...
-  RMSE:   5.384e-05  Status: ok  Time: 19.56s
+  RMSE:   5.384e-05  Status: ok  Time: 19.67s
 
 [003/99] I.6.2b  (vars=3)
   Found:  Exp(Plus(Plus(-0.9195579673418658, Times(Times(-0.49941418203149995, Inv(Square(v_{0}))...
-  RMSE:   6.084e-05  Status: ok  Time: 24.88s
+  RMSE:   6.084e-05  Status: ok  Time: 28.00s
 
 [004/99] I.8.14  (vars=4)
   Found:  Sqrt(Plus(Times(1.0002043750111436, Square(Subtract(v_{2}, v_{3}))), Times(0.9995774906...
-  RMSE:   2.684e-04  Status: ok  Time: 42.75s
+  RMSE:   2.684e-04  Status: ok  Time: 43.66s
 
 [005/99] I.9.18  (vars=9)
-  Found:  Times(Times(1.0362098277648386, Divide(Times(Times(v_{0}, v_{1}), v_{2}), Times(v_{3}, ...
-  RMSE:   5.561e-03  Status: partial  Time: 99.66s
+  Found:  Times(Times(1.9715571658451845, Divide(Times(Times(Times(Times(Times(v_{0}, v_{1}), v_{...
+  RMSE:   6.385e-03  Status: partial  Time: 102.77s
 
 [006/99] I.10.7  (vars=3)
   Found:  Times(Times(1.0405918447853861, v_{0}), Plus(Times(-0.18759059504971332, Cos(Inv(Log(Di...
-  RMSE:   2.234e-03  Status: partial  Time: 22.52s
+  RMSE:   2.234e-03  Status: partial  Time: 22.66s
 
 [007/99] I.11.19  (vars=6)
   Found:  Plus(Plus(Times(0.9986274670929745, Times(v_{2}, v_{5})), Times(1.0004503371480635, Tim...
-  RMSE:   8.174e-03  Status: ok  Time: 91.62s
+  RMSE:   8.174e-03  Status: ok  Time: 92.79s
 
 [008/99] I.12.1  (vars=2)
   Found:  Times(1.0002836976584761, Times(v_{0}, v_{1}))
-  RMSE:   2.863e-03  Status: ok  Time: 17.32s
+  RMSE:   2.863e-03  Status: ok  Time: 15.05s
 
 [009/99] I.12.2  (vars=4)
   Found:  Times(0.0796521551160292, Divide(Times(v_{0}, v_{1}), Times(v_{2}, Square(v_{3}))))
-  RMSE:   9.237e-05  Status: ok  Time: 46.01s
+  RMSE:   9.237e-05  Status: ok  Time: 47.71s
 
 [010/99] I.12.4  (vars=3)
   Found:  Times(0.07956583581473904, Divide(v_{0}, Times(v_{1}, Square(v_{2}))))
-  RMSE:   4.720e-06  Status: ok  Time: 23.67s
+  RMSE:   4.720e-06  Status: ok  Time: 23.53s
 
 [011/99] I.12.5  (vars=2)
   Found:  Times(0.999692520400476, Times(v_{0}, v_{1}))
-  RMSE:   3.187e-03  Status: ok  Time: 14.76s
+  RMSE:   3.187e-03  Status: ok  Time: 15.21s
 
 [012/99] I.12.11  (vars=5)
   Found:  Plus(Times(Times(0.9993356181000502, Times(Times(v_{0}, v_{2}), v_{3})), Sin(v_{4})), T...
-  RMSE:   1.904e-02  Status: ok  Time: 58.29s
+  RMSE:   1.904e-02  Status: ok  Time: 69.67s
 
 [013/99] I.13.4  (vars=4)
   Found:  Plus(Plus(Times(0.4994144761833076, Times(v_{0}, Square(v_{1}))), Times(0.5002474794909...
-  RMSE:   2.017e-02  Status: ok  Time: 80.23s
+  RMSE:   2.017e-02  Status: ok  Time: 79.19s
 
 [014/99] I.13.12  (vars=5)
   Found:  Times(Times(0.4900754666551547, Divide(Times(Times(v_{0}, v_{1}), v_{4}), v_{3})), Plus...
-  RMSE:   1.806e-02  Status: partial  Time: 79.11s
+  RMSE:   1.806e-02  Status: partial  Time: 70.94s
 
 [015/99] I.14.3  (vars=3)
   Found:  Times(1.000106387985069, Times(Times(v_{0}, v_{1}), v_{2}))
-  RMSE:   3.781e-03  Status: ok  Time: 24.63s
+  RMSE:   3.781e-03  Status: ok  Time: 23.53s
 
 [016/99] I.14.4  (vars=2)
   Found:  Times(0.5002938572783578, Times(v_{0}, Square(v_{1})))
-  RMSE:   1.101e-02  Status: ok  Time: 16.65s
+  RMSE:   1.101e-02  Status: ok  Time: 16.00s
 
 [017/99] I.15.3x  (vars=4)
-  Found:  Divide(Plus(Times(0.9995146036678021, v_{0}), Times(-1.000684184507408, Times(v_{1}, v_...
-  RMSE:   5.964e-03  Status: partial  Time: 83.98s
-
-[018/99] I.15.3t  (vars=4)
-  Found:  Divide(Plus(Times(0.997939145824588, v_{3}), Times(-1.002709567323437, Divide(Times(v_{...
-  RMSE:   5.836e-03  Status: partial  Time: 60.67s
-
-[019/99] I.15.1  (vars=3)
-  Found:  Times(Times(1.050051124514926, Times(v_{0}, v_{1})), Plus(Times(0.4977677839337751, Squ...
-  RMSE:   5.666e-03  Status: partial  Time: 25.62s
-
-[020/99] I.16.6  (vars=3)
-  Found:  Divide(Plus(Times(0.999317877730598, v_{1}), Times(0.9979708626155602, v_{2})), Plus(1,...
-  RMSE:   1.718e-03  Status: ok  Time: 27.31s
-
-[021/99] I.18.4  (vars=4)
-  Found:  Divide(Plus(Times(0.999942473707619, Times(v_{1}, v_{3})), Times(0.9997370962599914, Ti...
-  RMSE:   3.707e-04  Status: ok  Time: 71.47s
-
-[022/99] I.18.12  (vars=2)
-  [SKIP] too few valid samples
-
-[023/99] I.18.14  (vars=3)
-  [SKIP] too few valid samples
-
-[024/99] I.24.6  (vars=4)
-  Found:  Plus(Times(0.2500180773260611, Times(Times(v_{0}, Square(v_{2})), Square(v_{3}))), Time...
-  RMSE:   4.754e-03  Status: ok  Time: 89.86s
-
-[025/99] I.25.13  (vars=2)
-  Found:  Times(1.0001181795237137, Divide(v_{0}, v_{1}))
-  RMSE:   1.811e-04  Status: ok  Time: 13.32s
-
-[026/99] I.26.2  (vars=2)
-  Found:  Plus(Times(0.9995579443307926, ArcSin(Times(v_{0}, Sin(v_{1})))), 0.0002516391444600183)
-  RMSE:   3.257e-04  Status: ok  Time: 14.84s
-
-[027/99] I.27.6  (vars=3)
-  Found:  Inv(Plus(Times(1.0005621284852548, Inv(v_{0})), Times(1.0000621016835454, Divide(v_{2},...
-  RMSE:   2.090e-04  Status: ok  Time: 31.87s
-
-[028/99] I.29.4  (vars=2)
-  Found:  Times(1.0004072045773416, Divide(v_{0}, v_{1}))
-  RMSE:   8.380e-04  Status: ok  Time: 14.76s
-
-[029/99] I.29.16  (vars=4)
-  Found:  Sqrt(Plus(Plus(Times(1.0001220905225627, Square(v_{1})), Times(0.9993993959200225, Squa...
-  RMSE:   9.952e-04  Status: ok  Time: 53.74s
-
-[030/99] I.30.3  (vars=3)
-  Found:  Subtract(Exp(Plus(Plus(Plus(Plus(Plus(Times(-0.012064598864605501, Square(v_{1})), Time...
-  RMSE:   3.693e-01  Status: failed  Time: 24.34s
-
-[031/99] I.30.5  (vars=3)
-  Found:  Plus(Times(0.9998706833812767, ArcSin(Divide(v_{0}, Times(v_{1}, v_{2})))), 0.000054768...
-  RMSE:   3.426e-05  Status: ok  Time: 23.00s
-
-[032/99] I.32.5  (vars=4)
-  Found:  Times(0.053055036577886204, Divide(Times(Square(v_{0}), Square(v_{1})), Times(v_{2}, Cu...
-  RMSE:   6.334e-05  Status: ok  Time: 34.04s
-
-[033/99] I.32.17  (vars=6)
-  Found:  Times(Times(24.979707553170446, Divide(Times(Times(Times(v_{0}, Square(v_{2})), Square(...
-  RMSE:   5.407e-02  Status: failed  Time: 50.32s
-
-[034/99] I.34.8  (vars=4)
-  Found:  Times(0.9998920203959744, Divide(Times(Times(v_{0}, v_{1}), v_{2}), v_{3}))
-  RMSE:   1.711e-03  Status: ok  Time: 51.77s
-
-[035/99] I.34.1  (vars=3)
-  Found:  Divide(Times(0.999622466183709, v_{2}), Plus(1, Times(-1.0008022877200562, Divide(v_{1}...
-  RMSE:   1.170e-03  Status: ok  Time: 32.13s
-
-[036/99] I.34.14  (vars=3)
-  Found:  Times(Times(1.3189622700861627, v_{2}), Inv(Plus(Plus(1.2620849587989578, Times(-1.0187...
-  RMSE:   3.377e-03  Status: partial  Time: 32.42s
-
-[037/99] I.34.27  (vars=2)
-  Found:  Times(0.15916788574586224, Times(v_{0}, v_{1}))
-  RMSE:   1.342e-04  Status: ok  Time: 12.93s
-
-[038/99] I.37.4  (vars=3)
-  Found:  Times(Times(2.9314067434210593, Divide(Times(Sqrt(v_{0}), Sqrt(v_{1})), v_{2})), Plus(P...
-  RMSE:   1.317e-02  Status: partial  Time: 26.73s
-
-[039/99] I.38.12  (vars=3)
-  [SKIP] too few valid samples
-
-[040/99] I.39.1  (vars=2)
-  Found:  Times(1.4998699634967678, Times(v_{0}, v_{1}))
-  RMSE:   1.331e-03  Status: ok  Time: 16.77s
-
-[041/99] I.39.11  (vars=3)
-  Found:  Divide(Times(1.0004244517974952, Divide(Times(v_{1}, v_{2}), v_{0})), Plus(1, Times(-0....
-  RMSE:   7.703e-04  Status: ok  Time: 22.04s
-
-[042/99] I.39.22  (vars=4)
-  Found:  Times(1.0001892655275046, Divide(Times(Times(v_{0}, v_{1}), v_{3}), v_{2}))
-  RMSE:   2.857e-03  Status: ok  Time: 45.05s
-
-[043/99] I.40.1  (vars=6)
-  Found:  Plus(Plus(Plus(Plus(Plus(Plus(Times(0.9338908661503198, Divide(v_{3}, Times(v_{1}, Sqrt...
-  RMSE:   1.878e-01  Status: failed  Time: 45.59s
-
-[044/99] I.41.16  (vars=5)
-  Found:  Plus(Plus(Times(0.10116232455973392, Divide(Times(Times(Square(v_{0}), v_{1}), v_{3}), ...
-  RMSE:   7.093e-03  Status: partial  Time: 48.46s
-
-[045/99] I.43.16  (vars=4)
-  Found:  Times(0.9999190722430596, Divide(Times(Times(v_{0}, v_{1}), v_{2}), v_{3}))
-  RMSE:   1.297e-03  Status: ok  Time: 55.13s
-
-[046/99] I.43.31  (vars=3)
-  Found:  Times(0.9999709728778364, Times(Times(v_{0}, v_{1}), v_{2}))
-  RMSE:   9.457e-04  Status: ok  Time: 26.35s
-
-[047/99] I.43.43  (vars=4)
-  Found:  Divide(Times(1.0001298023710192, Divide(Times(v_{1}, v_{3}), v_{2})), Plus(v_{0}, -1.00...
-  RMSE:   8.629e-04  Status: ok  Time: 48.80s
-
-[048/99] I.44.4  (vars=5)
-  Found:  Times(Times(0.5148478424996683, Times(Times(v_{0}, v_{1}), v_{2})), Plus(Times(-1.94038...
-  RMSE:   2.050e-02  Status: ok  Time: 62.55s
-
-[049/99] I.47.23  (vars=3)
-  Found:  Sqrt(Times(0.9999090712013892, Divide(Times(v_{0}, v_{1}), v_{2})))
-  RMSE:   8.481e-05  Status: ok  Time: 24.92s
-
-[050/99] I.48.2  (vars=3)
-  Found:  Plus(Times(0.9987178595537947, Times(v_{0}, Square(v_{2}))), Times(0.5680554394583233, ...
-  RMSE:   2.687e-01  Status: partial  Time: 28.80s
-
-[051/99] I.50.26  (vars=4)
-  Found:  Plus(Plus(Times(Times(0.49992897181367624, Times(v_{0}, v_{3})), Cos(Times(2, Times(v_{...
-  RMSE:   9.358e-04  Status: ok  Time: 33.41s
-
-[052/99] II.2.42  (vars=5)
-  Found:  Times(Times(1.2788754646599307, Divide(Times(v_{0}, v_{3}), v_{4})), Plus(Times(-0.7804...
-  RMSE:   1.403e-02  Status: partial  Time: 63.67s
-
-[053/99] II.3.24  (vars=2)
-  Found:  Times(0.07960002785556955, Divide(v_{0}, Square(v_{1})))
-  RMSE:   2.048e-05  Status: ok  Time: 12.23s
-
-[054/99] II.4.23  (vars=3)
-  Found:  Times(0.07958727992300324, Divide(v_{0}, Times(v_{1}, v_{2})))
-  RMSE:   5.264e-06  Status: ok  Time: 21.31s
-
-[055/99] II.6.11  (vars=4)
-  Found:  Times(Times(0.07958269774642356, Divide(v_{1}, Times(v_{0}, Square(v_{3})))), Cos(v_{2}))
-  RMSE:   1.320e-06  Status: ok  Time: 32.47s
-
-[056/99] II.6.15a  (vars=6)
-  Found:  Times(Times(0.3318268031586808, Divide(Times(Times(v_{1}, v_{3}), v_{5}), Times(v_{0}, ...
-  RMSE:   1.002e-02  Status: failed  Time: 49.85s
-
-[057/99] II.6.15b  (vars=4)
-  Found:  Times(Times(0.07554215388772387, Divide(v_{1}, Times(v_{0}, Cube(v_{3})))), Times(1.578...
-  RMSE:   3.865e-05  Status: ok  Time: 39.30s
-
-[058/99] II.8.7  (vars=3)
-  Found:  Times(0.047731876103673763, Divide(Square(v_{0}), Times(v_{1}, v_{2})))
-  RMSE:   3.595e-05  Status: ok  Time: 22.68s
-
-[059/99] II.8.31  (vars=2)
-  Found:  Times(0.4997513485697103, Times(v_{0}, Square(v_{1})))
-  RMSE:   1.004e-02  Status: ok  Time: 17.52s
-
-[060/99] II.10.9  (vars=3)
-  Found:  Divide(Times(0.9990952344210358, Divide(v_{0}, v_{1})), Plus(v_{2}, 0.9973419317866083))
-  RMSE:   1.026e-04  Status: ok  Time: 25.75s
-
-[061/99] II.11.3  (vars=5)
-  Found:  Divide(Times(0.9996030831585543, Divide(Times(v_{0}, v_{1}), Square(v_{3}))), Plus(v_{2...
-  RMSE:   5.041e-05  Status: ok  Time: 90.75s
-
-[062/99] II.11.17  (vars=6)
-  Found:  Times(Times(0.8106784591845898, v_{0}), Plus(Plus(Plus(Plus(Plus(Plus(Times(Times(0.382...
-  RMSE:   2.156e-01  Status: failed  Time: 50.68s
-
-[063/99] II.11.20  (vars=5)
-  Found:  Times(0.33339119711479714, Divide(Times(Times(v_{0}, Square(v_{1})), v_{2}), Times(v_{3...
-  RMSE:   1.186e-03  Status: ok  Time: 59.62s
-
-[064/99] II.11.27  (vars=4)
-  Found:  Plus(Plus(Times(1.0077178028189888, Times(Times(Times(v_{0}, v_{1}), v_{2}), v_{3})), T...
-  RMSE:   5.997e-04  Status: ok  Time: 50.44s
-
-[065/99] II.11.28  (vars=2)
-  Found:  Divide(Plus(0.9999157223634509, Times(0.6668521115438613, Times(v_{0}, v_{1}))), Plus(1...
-  RMSE:   1.209e-04  Status: ok  Time: 13.38s
-
-[066/99] II.13.17  (vars=4)
-  Found:  Times(0.15910554325450502, Divide(v_{2}, Times(Times(v_{0}, Square(v_{1})), v_{3})))
-  RMSE:   8.897e-06  Status: ok  Time: 43.87s
-
-[067/99] II.13.23  (vars=3)
-  Found:  Times(Times(1.046406611652581, v_{0}), Plus(Times(-0.902070988792934, Cos(Tan(ArcSin(Di...
-  RMSE:   3.238e-03  Status: partial  Time: 26.12s
-
-[068/99] II.13.34  (vars=3)
-  Found:  Times(Times(1.051912904970036, Times(v_{0}, v_{1})), Plus(Times(0.4734211748237962, Tan...
-  RMSE:   4.784e-03  Status: partial  Time: 25.64s
-
-[069/99] II.15.4  (vars=3)
-  Found:  Times(Times(-1.0001164038543442, Times(v_{0}, v_{1})), Cos(v_{2}))
-  RMSE:   7.996e-04  Status: ok  Time: 26.45s
-
-[070/99] II.15.5  (vars=3)
-  Found:  Times(Times(-1.0000927570032558, Times(v_{0}, v_{1})), Cos(v_{2}))
-  RMSE:   5.413e-04  Status: ok  Time: 29.09s
-
-[071/99] II.21.32  (vars=5)
-  Found:  Divide(Times(0.07955239366544488, Divide(v_{0}, Times(v_{1}, v_{2}))), Plus(1, Times(-1...
-  RMSE:   1.700e-05  Status: ok  Time: 87.65s
-
-[072/99] II.24.17  (vars=3)
-  Found:  Sqrt(Plus(Times(0.9999734194177288, Divide(Square(v_{0}), Square(v_{1}))), Times(-9.870...
-  RMSE:   7.203e-05  Status: ok  Time: 25.97s
-
-[073/99] II.27.16  (vars=3)
-  Found:  Times(1.0007313014041357, Times(Times(v_{0}, v_{1}), Square(v_{2})))
-  RMSE:   9.635e-02  Status: ok  Time: 27.42s
-
-[074/99] II.27.18  (vars=2)
-  Found:  Times(0.9999330028738513, Times(v_{0}, Square(v_{1})))
-  RMSE:   2.657e-03  Status: ok  Time: 15.39s
-
-[075/99] II.34.2a  (vars=3)
-  Found:  Times(0.15914799060087575, Divide(Times(v_{0}, v_{1}), v_{2}))
-  RMSE:   3.200e-05  Status: ok  Time: 20.80s
-
-[076/99] II.34.2  (vars=3)
-  Found:  Times(0.49995860285319693, Times(Times(v_{0}, v_{1}), v_{2}))
-  RMSE:   1.255e-03  Status: ok  Time: 23.88s
-
-[077/99] II.34.11  (vars=4)
-  Found:  Times(0.4999557896113448, Divide(Times(Times(v_{0}, v_{1}), v_{2}), v_{3}))
-  RMSE:   6.338e-04  Status: ok  Time: 51.65s
-
-[078/99] II.34.29a  (vars=3)
-  Found:  Times(0.07959430926170341, Divide(Times(v_{0}, v_{1}), v_{2}))
-  RMSE:   8.280e-05  Status: ok  Time: 25.18s
-
-[079/99] II.34.29b  (vars=5)
-  Found:  Times(6.282575988668481, Divide(Times(Times(Times(v_{0}, v_{2}), v_{3}), v_{4}), v_{1}))
-  RMSE:   2.866e-02  Status: ok  Time: 89.76s
-
-[080/99] II.35.18  (vars=5)
-  Found:  Times(Times(0.2061337951024315, Divide(Times(Times(v_{0}, v_{1}), v_{2}), Times(v_{3}, ...
-  RMSE:   1.522e-03  Status: partial  Time: 91.73s
-
-[081/99] II.35.21  (vars=5)
-  Found:  Times(Times(0.6058234272968512, Divide(Times(Times(v_{0}, Sqrt(Cube(v_{1}))), Sqrt(v_{2...
-  RMSE:   5.145e-02  Status: failed  Time: 81.94s
-
-[082/99] II.36.38  (vars=8)
-  Found:  Times(Times(2.5907741125025043, Divide(Times(Times(v_{0}, Sqrt(v_{1})), Sqrt(v_{4})), T...
-  RMSE:   5.741e-02  Status: failed  Time: 99.95s
-
-[083/99] II.38.3  (vars=4)
-  Found:  Times(0.9998163903183198, Divide(Times(Times(v_{0}, v_{1}), v_{3}), v_{2}))
-  RMSE:   2.731e-03  Status: ok  Time: 53.35s
-
-[084/99] II.38.14  (vars=2)
-  Found:  Divide(Times(0.5005104293579784, v_{0}), Plus(v_{1}, 1.0020422093610075))
-  RMSE:   1.782e-04  Status: ok  Time: 15.55s
-
-[085/99] III.4.32  (vars=4)
-  Found:  Plus(Times(6.276160840113799, Divide(Times(v_{2}, v_{3}), Times(v_{0}, v_{1}))), -0.470...
-  RMSE:   1.293e-02  Status: ok  Time: 60.88s
-
-[086/99] III.4.33  (vars=4)
-  Found:  Plus(Plus(Times(0.999707668331984, Times(v_{2}, v_{3})), Times(-0.07913533765387412, Ti...
-  RMSE:   3.012e-03  Status: ok  Time: 67.94s
-
-[087/99] III.7.38  (vars=3)
-  Found:  Times(12.564374987841562, Divide(Times(v_{0}, v_{1}), v_{2}))
-  RMSE:   9.532e-03  Status: ok  Time: 23.80s
-
-[088/99] III.8.54  (vars=3)
-  Found:  0.47395056811869724
-  RMSE:   3.552e-01  Status: failed  Time: 22.96s
-
-[089/99] III.9.52  (vars=6)
-  Found:  Times(Times(11.632407522560948, Divide(Times(v_{0}, v_{1}), Times(v_{2}, v_{3}))), Subt...
-  RMSE:   1.428e+00  Status: failed  Time: 56.48s
-
-[090/99] III.10.19  (vars=3)
-  [SKIP] too few valid samples
-
-[091/99] III.12.43  (vars=2)
-  Found:  Times(0.1591626657449267, Times(v_{0}, v_{1}))
-  RMSE:   7.885e-05  Status: ok  Time: 12.26s
-
-[092/99] III.13.18  (vars=4)
-  Found:  Times(12.570392734673769, Divide(Times(Times(v_{0}, Square(v_{1})), v_{2}), v_{3}))
-  RMSE:   2.415e-01  Status: ok  Time: 49.24s
-
-[093/99] III.14.14  (vars=5)
-  Found:  Times(Times(1.668828645272247, Divide(Times(Times(v_{0}, Square(v_{1})), Square(v_{2}))...
-  RMSE:   3.307e-02  Status: partial  Time: 84.10s
-
-[094/99] III.15.12  (vars=3)
-  Found:  Plus(Times(Times(-2.000351256807367, v_{0}), Cos(Times(v_{1}, v_{2}))), Times(2.0002955...
-  RMSE:   1.286e-03  Status: ok  Time: 22.47s
-
-[095/99] III.15.14  (vars=3)
-  Found:  Times(0.012664358743387864, Divide(Square(v_{0}), Times(v_{1}, Square(v_{2}))))
-  RMSE:   1.118e-06  Status: ok  Time: 23.16s
-
-[096/99] III.15.27  (vars=3)
-  Found:  Times(6.282991262806796, Divide(v_{0}, Times(v_{1}, v_{2})))
-  RMSE:   1.237e-04  Status: ok  Time: 22.16s
-
-[097/99] III.17.37  (vars=3)
-  Found:  Plus(Times(1.0009057356802074, v_{0}), Times(Times(1.0002559674769163, Times(v_{0}, v_{...
-  RMSE:   2.090e-03  Status: ok  Time: 25.45s
-
-[098/99] III.19.51  (vars=4)
-  [SKIP] too few valid samples
-
-[099/99] III.21.20  (vars=4)
-  Found:  Times(-1.0001770848365148, Divide(Times(Times(v_{0}, v_{1}), v_{2}), v_{3}))
-  RMSE:   2.528e-03  Status: ok  Time: 46.89s
-
-[INFO] Results saved to /home/user/eml-sr_model/results/eml_sr_fable_feynman_test1_v4_results.json
-[INFO] Report written to /home/user/eml-sr_model/texts/eml_sr_fable_feynman_test1_v4_report.md
-
-==============================================================
-  SUMMARY: 70 / 99 equations recovered
-  vs first_AI: delta_ok=61  lost=[]
-  vs cursor: delta_ok=57  lost=[]
-  vs fable_v1: delta_ok=7  lost=['I.10.7', 'I.15.1', 'I.48.2', 'II.13.23', 'II.13.34']
-  vs fable_v2: delta_ok=-10  lost=['I.10.7', 'I.13.12', 'I.15.1', 'I.34.14', 'I.40.1', 'I.41.16', 'I.48.2', 'II.13.23', 'II.13.34', 'II.2.42', 'II.6.15a', 'III.14.14']
-  Total time: 3837.3s (64.0min)
-==============================================================
