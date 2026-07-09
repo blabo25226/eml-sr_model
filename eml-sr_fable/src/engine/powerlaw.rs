@@ -35,6 +35,13 @@ enum Transform {
     /// t = ln((1 - y)/y), defined for y in (0, 1). Linearizes the logistic
     /// family y = 1/(1 + exp(m)) common in biology/chemistry/economics.
     Logit,
+    /// t = asin(sqrt(y)), defined for y in (0, 1). Linearizes y = sin^2(m)
+    /// (transition probabilities, interference fringes) as long as the
+    /// argument stays within the principal branch.
+    AsinSqrt,
+    /// t = atanh(y), defined for |y| < 1. Linearizes y = tanh(m)
+    /// (saturation laws with unit amplitude).
+    Atanh,
 }
 
 const TRANSFORMS: &[Transform] = &[
@@ -45,6 +52,8 @@ const TRANSFORMS: &[Transform] = &[
     Transform::Y2,
     Transform::Log1p,
     Transform::Logit,
+    Transform::AsinSqrt,
+    Transform::Atanh,
 ];
 
 /// Solves a dense linear least-squares system via normal equations.
@@ -585,6 +594,7 @@ fn build_feature_dictionary(
         features.push(Feature::Sin2x(i));
         features.push(Feature::Cos2x(i));
         features.push(Feature::Sigmoid(i));
+        features.push(Feature::TanhVar(i));
     }
     for &i in positive {
         features.push(Feature::Ln(i));
@@ -593,6 +603,9 @@ fn build_feature_dictionary(
         for &j in real.iter().skip(a + 1) {
             features.push(Feature::DiffSq(i, j));
             features.push(Feature::AbsDiff(i, j));
+            // The sigmoid gate is not symmetric: keep both orientations.
+            features.push(Feature::SigmoidDiff(i, j));
+            features.push(Feature::SigmoidDiff(j, i));
             features.push(Feature::CosDiff(i, j));
             features.push(Feature::CosProd(i, j));
             features.push(Feature::SinProd(i, j));
@@ -721,6 +734,7 @@ fn omp_monomial_fit(
                         Feature::Sin2x(i),
                         Feature::Cos2x(i),
                         Feature::Sigmoid(i),
+                        Feature::TanhVar(i),
                     ] {
                         dictionary.push(Term {
                             coeff: 1.0,
@@ -1268,7 +1282,8 @@ fn transform_target(t: Transform, ys_abs: &[f64]) -> Option<Vec<f64>> {
         return None;
     }
     let vals: Vec<f64> = match t {
-        Transform::Id | Transform::Log1p | Transform::Logit => return Some(ys_abs.to_vec()),
+        Transform::Id | Transform::Log1p | Transform::Logit | Transform::AsinSqrt
+        | Transform::Atanh => return Some(ys_abs.to_vec()),
         Transform::Log => ys_abs.iter().map(|&y| y.ln()).collect(),
         Transform::InvY => ys_abs.iter().map(|&y| 1.0 / y).collect(),
         Transform::InvY2 => ys_abs.iter().map(|&y| 1.0 / (y * y)).collect(),
@@ -1303,6 +1318,11 @@ fn invert_prediction(t: Transform, m: f64) -> f64 {
         }
         Transform::Log1p => m.exp_m1(),
         Transform::Logit => 1.0 / (1.0 + m.exp()),
+        Transform::AsinSqrt => {
+            let s = m.sin();
+            s * s
+        }
+        Transform::Atanh => m.tanh(),
     }
 }
 
@@ -1335,6 +1355,8 @@ fn invert_expression(
             ),
             reg,
         ),
+        Transform::AsinSqrt => build::unary("Square", build::unary("Sin", m_expr, reg), reg),
+        Transform::Atanh => build::unary("Tanh", m_expr, reg),
     };
     if negate {
         build::unary("Neg", inner, reg)
@@ -1389,6 +1411,13 @@ fn transform_sqrt_weights(t: Transform, ys: &[f64]) -> Option<Vec<f64>> {
         Transform::Log1p => ys.iter().map(|&y| (1.0 + y).abs()).collect(),
         // |T'(y)| = 1/(y(1-y))     -> w = y(1-y)
         Transform::Logit => ys.iter().map(|&y| (y * (1.0 - y)).abs()).collect(),
+        // |T'(y)| = 1/(2 sqrt(y(1-y))) -> w = 2 sqrt(y(1-y))
+        Transform::AsinSqrt => ys
+            .iter()
+            .map(|&y| 2.0 * (y * (1.0 - y)).max(0.0).sqrt())
+            .collect(),
+        // |T'(y)| = 1/(1-y^2)      -> w = 1 - y^2
+        Transform::Atanh => ys.iter().map(|&y| (1.0 - y * y).abs()).collect(),
     };
     let max = raw.iter().cloned().fold(0.0f64, f64::max);
     if !max.is_finite() || max <= 0.0 {
@@ -1423,6 +1452,26 @@ fn prepare_targets(ys: &[f64]) -> Vec<(Transform, Vec<f64>, bool, Option<Vec<f64
             Transform::Logit => {
                 if ys.iter().all(|&y| y > 1e-9 && y < 1.0 - 1e-9) {
                     let vals: Vec<f64> = ys.iter().map(|&y| ((1.0 - y) / y).ln()).collect();
+                    if vals.iter().all(|v| v.is_finite()) {
+                        let sw = transform_sqrt_weights(t, ys);
+                        out.push((t, vals, false, sw));
+                    }
+                }
+            }
+            Transform::AsinSqrt => {
+                if ys.iter().all(|&y| y > 1e-9 && y < 1.0 - 1e-9) {
+                    let vals: Vec<f64> = ys.iter().map(|&y| y.sqrt().asin()).collect();
+                    if vals.iter().all(|v| v.is_finite()) {
+                        let sw = transform_sqrt_weights(t, ys);
+                        out.push((t, vals, false, sw));
+                    }
+                }
+            }
+            Transform::Atanh => {
+                if ys.iter().all(|&y| y.abs() < 1.0 - 1e-9)
+                    && ys.iter().any(|&y| y.abs() > 0.2)
+                {
+                    let vals: Vec<f64> = ys.iter().map(|&y| y.atanh()).collect();
                     if vals.iter().all(|v| v.is_finite()) {
                         let sw = transform_sqrt_weights(t, ys);
                         out.push((t, vals, false, sw));
@@ -2560,5 +2609,141 @@ mod v5_tests {
         let mut fits2: Vec<PowerlawFit> = Vec::new();
         validate_and_assemble(Transform::Id, false, &good, &inputs, &ys, &reg, &mut fits2);
         assert!(!fits2.is_empty(), "guard rejected a legitimate sum");
+    }
+}
+
+#[cfg(test)]
+mod v5_struct_tests {
+    use super::*;
+    use crate::config::SearchConfig;
+    use crate::ops::registry::OperatorRegistry;
+
+    fn lcg(seed: &mut u64) -> f64 {
+        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((*seed >> 33) as f64) / (u64::MAX >> 33) as f64
+    }
+
+    fn gauss(seed: &mut u64) -> f64 {
+        let u1 = lcg(seed).max(1e-12);
+        let u2 = lcg(seed);
+        (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+
+    /// P2-1: z * sigmoid(x - y) is a single feature-dictionary term now.
+    #[test]
+    fn recovers_sigmoid_gate() {
+        let mut seed = 11u64;
+        let mut inputs = Vec::new();
+        for _ in 0..750 {
+            let x = -2.0 + 4.0 * lcg(&mut seed);
+            let y = -2.0 + 4.0 * lcg(&mut seed);
+            let z = -2.0 + 4.0 * lcg(&mut seed);
+            inputs.push(vec![x, y, z]);
+        }
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| r[2] / (1.0 + (r[1] - r[0]).exp()))
+            .collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let best = fits
+            .iter()
+            .map(|f| f.error)
+            .fold(f64::INFINITY, f64::min);
+        assert!(best < 1e-8, "sigmoid gate not recovered: best error {}", best);
+    }
+
+    /// P2-2: y = sin^2(m) with a monomial argument is linearized by the
+    /// asin(sqrt(y)) transform (argument within the principal branch).
+    #[test]
+    fn recovers_sin_squared() {
+        let mut seed = 13u64;
+        let mut inputs = Vec::new();
+        for _ in 0..750 {
+            // Keep the argument 0.5*x*y inside (0, pi/2).
+            let x = 0.2 + 1.0 * lcg(&mut seed);
+            let y = 0.2 + 1.0 * lcg(&mut seed);
+            inputs.push(vec![x, y]);
+        }
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| {
+                let a = 0.5 * r[0] * r[1];
+                let s = a.sin();
+                s * s
+            })
+            .collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let best = fits
+            .iter()
+            .map(|f| f.error)
+            .fold(f64::INFINITY, f64::min);
+        assert!(best < 1e-8, "sin^2 not recovered: best error {}", best);
+    }
+
+    /// P2-3: y = tanh(m) is linearized by the atanh transform.
+    #[test]
+    fn recovers_tanh_of_monomial() {
+        let mut seed = 17u64;
+        let mut inputs = Vec::new();
+        for _ in 0..750 {
+            let x = 0.2 + 2.0 * lcg(&mut seed);
+            let y = 0.2 + 2.0 * lcg(&mut seed);
+            inputs.push(vec![x, y]);
+        }
+        let ys: Vec<f64> = inputs.iter().map(|r| (0.7 * r[0] / r[1]).tanh()).collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let best = fits
+            .iter()
+            .map(|f| f.error)
+            .fold(f64::INFINITY, f64::min);
+        assert!(best < 1e-8, "tanh law not recovered: best error {}", best);
+    }
+
+    /// Noise robustness of the sigmoid gate (WLS + validation machinery all
+    /// active): 1% gaussian noise must not break the structural recovery.
+    #[test]
+    fn recovers_sigmoid_gate_under_noise() {
+        let mut seed = 19u64;
+        let mut inputs = Vec::new();
+        for _ in 0..750 {
+            let x = -2.0 + 4.0 * lcg(&mut seed);
+            let y = -2.0 + 4.0 * lcg(&mut seed);
+            let z = -2.0 + 4.0 * lcg(&mut seed);
+            inputs.push(vec![x, y, z]);
+        }
+        let clean: Vec<f64> = inputs
+            .iter()
+            .map(|r| r[2] / (1.0 + (r[1] - r[0]).exp()))
+            .collect();
+        let y_std = {
+            let m = clean.iter().sum::<f64>() / clean.len() as f64;
+            (clean.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / clean.len() as f64).sqrt()
+        };
+        let sigma = 0.01 * y_std;
+        let ys: Vec<f64> = clean.iter().map(|&c| c + sigma * gauss(&mut seed)).collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let best_clean = fits
+            .iter()
+            .take(5)
+            .map(|f| expression_rmse(&f.expression, &inputs, &clean, &reg))
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            best_clean < 0.5 * sigma,
+            "noisy sigmoid gate not recovered: clean rmse {} vs sigma {}",
+            best_clean,
+            sigma
+        );
     }
 }
