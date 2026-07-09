@@ -115,7 +115,11 @@ def extract_vars(formula):
 
 
 def run_suite(noise_rel, results_path, report_path, title, description_lines,
-              searcher_params=None, smoke_ids=None):
+              searcher_params=None, smoke_ids=None,
+              outlier_frac=0.0, outlier_scale=10.0):
+    """outlier_frac > 0 でガウシアンノイズに加えて外れ値を注入する:
+    訓練点の outlier_frac 割合に ±outlier_scale·σ を加算 (seed=555+行番号)。
+    合否閾値はガウシアン σ 基準のまま (外れ値は閾値を緩めない)。"""
     params = dict(BASE_SEARCHER_PARAMS)
     if noise_rel > 0:
         params["early_exit_threshold"] = 9e-3
@@ -148,6 +152,13 @@ def run_suite(noise_rel, results_path, report_path, title, description_lines,
             sigma = noise_rel * float(np.std(y))
             rng_n = np.random.default_rng(777 + idx)
             y_train = y + rng_n.normal(0.0, sigma, size=len(y))
+        if outlier_frac > 0 and sigma > 0:
+            rng_o = np.random.default_rng(555 + idx)
+            n_out = max(1, int(round(outlier_frac * len(y_train))))
+            pos = rng_o.choice(len(y_train), size=n_out, replace=False)
+            signs = rng_o.choice([-1.0, 1.0], size=n_out)
+            y_train = y_train.copy()
+            y_train[pos] += signs * outlier_scale * sigma
 
         r = run_sr(name, X, y_train, params, X_test=Xt, y_test=yt, sigma=sigma)
         r["index"]    = i + 1
@@ -170,10 +181,12 @@ def run_suite(noise_rel, results_path, report_path, title, description_lines,
               f"t={r['elapsed_s']:.1f}s", flush=True)
 
         # 途中保存（クラッシュ耐性）
-        _save(results, bench, params, noise_rel, time.time() - t_all, results_path)
+        _save(results, bench, params, noise_rel, time.time() - t_all, results_path,
+              outlier_frac, outlier_scale)
 
     total = time.time() - t_all
-    summary = _save(results, bench, params, noise_rel, total, results_path)
+    summary = _save(results, bench, params, noise_rel, total, results_path,
+                    outlier_frac, outlier_scale)
     _write_report(summary, report_path, title, description_lines)
     ok = summary["ok"]
     print(f"\nSUMMARY: {ok}/{len(bench)} ok  "
@@ -186,7 +199,8 @@ def run_suite(noise_rel, results_path, report_path, title, description_lines,
     return summary
 
 
-def _save(results, bench, params, noise_rel, elapsed, results_path):
+def _save(results, bench, params, noise_rel, elapsed, results_path,
+          outlier_frac=0.0, outlier_scale=10.0):
     section_stats = {}
     for s in ("A", "B", "C"):
         rs = [r for r in results if r["section"] == s]
@@ -207,7 +221,9 @@ def _save(results, bench, params, noise_rel, elapsed, results_path):
         "section_stats": section_stats,
         "total_elapsed_s": elapsed,
         "settings": {**params, "N_TRAIN": N_TRAIN, "N_TEST": N_TEST,
-                     "NOISE_REL": noise_rel},
+                     "NOISE_REL": noise_rel,
+                     "OUTLIER_FRAC": outlier_frac,
+                     "OUTLIER_SCALE": outlier_scale},
         "results": results,
     }
     os.makedirs(os.path.dirname(results_path), exist_ok=True)
