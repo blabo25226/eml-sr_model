@@ -9,8 +9,10 @@ eml_sr_fable_test3_v2.py
   - 合否判定はクリーンなホールドアウト 250 点のテスト RMSE
 
 使い方:
-  python3 eml_sr_fable_test3_v2.py            # 全 28 式
-  python3 eml_sr_fable_test3_v2.py --smoke    # スモーク 3 式
+  python3 eml_sr_fable_test3_v2.py                  # 全 28 式
+  python3 eml_sr_fable_test3_v2.py --smoke          # スモーク 3 式
+  python3 eml_sr_fable_test3_v2.py --out-suffix v5  # 出力を *_v5 として保存
+                                                    # (既存結果を上書きしない)
 ======================================================
 """
 
@@ -42,7 +44,13 @@ DESCRIPTION = [
 
 def main():
     smoke = "--smoke" in sys.argv
+    suffix = None
+    if "--out-suffix" in sys.argv:
+        suffix = sys.argv[sys.argv.index("--out-suffix") + 1]
     results_path, report_path = RESULTS_PATH, REPORT_PATH
+    if suffix:
+        results_path = results_path.replace(".json", f"_{suffix}.json")
+        report_path  = report_path.replace(".md", f"_{suffix}.md")
     if smoke:
         results_path = results_path.replace(".json", "_smoke.json")
         report_path  = report_path.replace(".md", "_smoke.md")

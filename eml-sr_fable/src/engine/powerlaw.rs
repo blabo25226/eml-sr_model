@@ -67,12 +67,16 @@ fn lstsq(design: &[Vec<f64>], target: &[f64]) -> Option<Vec<f64>> {
             atb[i] += row[i] * t;
         }
     }
+    // Tiny Tikhonov ridge keeps near-collinear systems stable. Scaled by the
+    // mean diagonal so huge-magnitude columns (common in raw physical data)
+    // get the same relative damping as O(1) columns.
+    let trace: f64 = (0..m).map(|i| ata[i][i]).sum();
+    let ridge = 1e-12 * (trace / m as f64).max(1.0);
     for i in 0..m {
         for j in 0..i {
             ata[i][j] = ata[j][i];
         }
-        // Tiny Tikhonov ridge keeps near-collinear systems stable.
-        ata[i][i] += 1e-12;
+        ata[i][i] += ridge;
     }
     gaussian_solve(&mut ata, &mut atb)
 }
@@ -118,6 +122,33 @@ fn rms(v: &[f64]) -> f64 {
         return f64::INFINITY;
     }
     (v.iter().map(|x| x * x).sum::<f64>() / v.len() as f64).sqrt()
+}
+
+/// Weighted RMS: rms of `v` with each entry scaled by the matching
+/// sqrt-weight. Falls back to plain rms when no weights are given.
+fn wrms(v: &[f64], sw: Option<&[f64]>) -> f64 {
+    match sw {
+        None => rms(v),
+        Some(w) => {
+            if v.is_empty() {
+                return f64::INFINITY;
+            }
+            (v.iter()
+                .zip(w)
+                .map(|(x, s)| {
+                    let y = x * s;
+                    y * y
+                })
+                .sum::<f64>()
+                / v.len() as f64)
+                .sqrt()
+        }
+    }
+}
+
+#[inline]
+fn sw_at(sw: Option<&[f64]>, i: usize) -> f64 {
+    sw.map_or(1.0, |w| w[i])
 }
 
 fn rmse(pred: &[f64], target: &[f64]) -> f64 {
@@ -249,11 +280,27 @@ fn refit_coeff(basis: &[f64], residual: &[f64]) -> Option<f64> {
 
 /// Jointly refits the coefficients of `terms` against `target` (coeffs folded in).
 fn joint_refit(terms: &mut [Term], columns: &[Vec<f64>], target: &[f64]) -> Option<Vec<f64>> {
+    joint_refit_weighted(terms, columns, target, None)
+}
+
+/// Weighted joint refit: the least-squares fit runs on rows scaled by the
+/// sqrt-weights (WLS), while the returned prediction stays in the unscaled
+/// space so residual bookkeeping is unchanged.
+fn joint_refit_weighted(
+    terms: &mut [Term],
+    columns: &[Vec<f64>],
+    target: &[f64],
+    sw: Option<&[f64]>,
+) -> Option<Vec<f64>> {
     let n = target.len();
     let design: Vec<Vec<f64>> = (0..n)
-        .map(|i| columns.iter().map(|c| c[i]).collect())
+        .map(|i| {
+            let s = sw_at(sw, i);
+            columns.iter().map(|c| c[i] * s).collect()
+        })
         .collect();
-    let coeffs = lstsq(&design, target)?;
+    let scaled_target: Vec<f64> = (0..n).map(|i| target[i] * sw_at(sw, i)).collect();
+    let coeffs = lstsq(&design, &scaled_target)?;
     if coeffs.iter().any(|c| !c.is_finite()) {
         return None;
     }
@@ -273,16 +320,51 @@ fn joint_refit(terms: &mut [Term], columns: &[Vec<f64>], target: &[f64]) -> Opti
 }
 
 /// Greedy residual boosting with log-space monomial fits.
+///
+/// `sw` are optional per-row sqrt-weights (WLS in a transformed space): the
+/// exponent proposal still uses the raw residual (log-space structure), but
+/// every least-squares fit and every progress decision runs weighted.
 fn greedy_monomial_fit(
     inputs: &[Vec<f64>],
     target: &[f64],
     usable: &[usize],
     max_terms: usize,
+    sw: Option<&[f64]>,
 ) -> Option<Vec<Term>> {
     let mut terms: Vec<Term> = Vec::new();
     let mut unit_columns: Vec<Vec<f64>> = Vec::new();
     let mut residual = target.to_vec();
-    let mut current_rmse = rms(&residual);
+    let mut current_rmse = wrms(&residual, sw);
+    let n = target.len();
+
+    // Weighted intercept+slope fit of `col` against `res` restricted to
+    // `rows`; returns (weighted rms over `err_rows`, coeff, intercept).
+    let fit2 = |col: &[f64], res: &[f64], rows: &[usize], err_rows: &[usize]| -> Option<(f64, f64, f64)> {
+        let design: Vec<Vec<f64>> = rows
+            .iter()
+            .map(|&i| {
+                let s = sw_at(sw, i);
+                vec![s, s * col[i]]
+            })
+            .collect();
+        let t: Vec<f64> = rows.iter().map(|&i| res[i] * sw_at(sw, i)).collect();
+        let sol = lstsq(&design, &t)?;
+        let mut acc = 0.0;
+        for &i in err_rows {
+            let d = (res[i] - sol[0] - sol[1] * col[i]) * sw_at(sw, i);
+            if !d.is_finite() {
+                return None;
+            }
+            acc += d * d;
+        }
+        Some(((acc / err_rows.len().max(1) as f64).sqrt(), sol[1], sol[0]))
+    };
+    let all_rows: Vec<usize> = (0..n).collect();
+    // Deterministic 80/20 split for the continuous-exponent refinement: the
+    // refined exponent must win on held-out rows, otherwise it is chasing
+    // the noise floor and the rounded exponent is kept.
+    let train_rows: Vec<usize> = (0..n).filter(|i| i % 5 != 4).collect();
+    let val_rows: Vec<usize> = (0..n).filter(|i| i % 5 == 4).collect();
 
     for _ in 0..max_terms {
         let (raw_exps, _) = match fit_monomial_log(inputs, &residual, usable) {
@@ -304,18 +386,10 @@ fn greedy_monomial_fit(
             if column.iter().any(|v| !v.is_finite()) {
                 continue;
             }
-            let design: Vec<Vec<f64>> = column.iter().map(|&c| vec![1.0, c]).collect();
-            let sol = match lstsq(&design, &residual) {
-                Some(s) => s,
+            let (err, coeff, _c0) = match fit2(&column, &residual, &all_rows, &all_rows) {
+                Some(v) => v,
                 None => continue,
             };
-            let (c0, coeff) = (sol[0], sol[1]);
-            let new_res: Vec<f64> = residual
-                .iter()
-                .zip(&column)
-                .map(|(r, c)| r - c0 - coeff * c)
-                .collect();
-            let err = rms(&new_res);
             if best.as_ref().map_or(true, |(_, _, e)| err < *e) {
                 best = Some((
                     Term {
@@ -333,14 +407,15 @@ fn greedy_monomial_fit(
         // Single-variable continuous-exponent refinement: when the term uses
         // exactly one variable, the true exponent may be far from every
         // rounding candidate (the raw log-fit is dragged by an intercept,
-        // e.g. Hill laws). Ternary-search the exponent against the
-        // intercept-aware fit error.
+        // e.g. Hill laws). Ternary-search the exponent, scoring on the
+        // held-out 20% with coefficients fit on the other 80% so a noisy
+        // dataset cannot drag the exponent off a clean rational value.
         let active: Vec<usize> = (0..term.exponents.len())
             .filter(|&j| term.exponents[j] != 0.0)
             .collect();
-        if active.len() == 1 {
+        if active.len() == 1 && !val_rows.is_empty() {
             let j = active[0];
-            let score_exp = |e: f64| -> Option<(f64, f64, f64, Vec<f64>)> {
+            let col_for_exp = |e: f64| -> Option<Vec<f64>> {
                 let mut exps = vec![0.0; term.exponents.len()];
                 exps[j] = e;
                 let col = Monomial {
@@ -349,36 +424,43 @@ fn greedy_monomial_fit(
                 }
                 .eval_rows(inputs);
                 if col.iter().any(|v| !v.is_finite()) {
-                    return None;
+                    None
+                } else {
+                    Some(col)
                 }
-                let design: Vec<Vec<f64>> = col.iter().map(|&c| vec![1.0, c]).collect();
-                let sol = lstsq(&design, &residual)?;
-                let res: Vec<f64> = residual
-                    .iter()
-                    .zip(&col)
-                    .map(|(r, c)| r - sol[0] - sol[1] * c)
-                    .collect();
-                Some((rms(&res), sol[1], sol[0], col))
+            };
+            let val_score = |e: f64| -> f64 {
+                col_for_exp(e)
+                    .and_then(|col| fit2(&col, &residual, &train_rows, &val_rows))
+                    .map(|v| v.0)
+                    .unwrap_or(f64::INFINITY)
             };
             let (mut lo, mut hi) = (term.exponents[j] - 2.0, term.exponents[j] + 2.0);
             for _ in 0..40 {
                 let m1 = lo + (hi - lo) / 3.0;
                 let m2 = hi - (hi - lo) / 3.0;
-                let e1 = score_exp(m1).map(|v| v.0).unwrap_or(f64::INFINITY);
-                let e2 = score_exp(m2).map(|v| v.0).unwrap_or(f64::INFINITY);
-                if e1 <= e2 {
+                if val_score(m1) <= val_score(m2) {
                     hi = m2;
                 } else {
                     lo = m1;
                 }
             }
             let e_star = (lo + hi) / 2.0;
-            if let Some((e_err, coeff, _c0, col)) = score_exp(e_star) {
-                if e_err < err {
-                    term.exponents[j] = e_star;
-                    term.coeff = coeff;
-                    column = col;
-                    err = e_err;
+            // Keep the rounded exponent unless the refined one is a clear
+            // (>2%) validation improvement.
+            let val_rounded = val_score(term.exponents[j]);
+            let val_refined = val_score(e_star);
+            if val_refined < val_rounded * 0.98 {
+                if let Some(col) = col_for_exp(e_star) {
+                    if let Some((e_err, coeff, _c0)) = fit2(&col, &residual, &all_rows, &all_rows)
+                    {
+                        if e_err < err {
+                            term.exponents[j] = e_star;
+                            term.coeff = coeff;
+                            column = col;
+                            err = e_err;
+                        }
+                    }
                 }
             }
         }
@@ -402,14 +484,14 @@ fn greedy_monomial_fit(
         unit_columns.push(column);
 
         // Joint refit of all coefficients keeps the greedy path numerically exact.
-        match joint_refit(&mut terms, &unit_columns, target) {
+        match joint_refit_weighted(&mut terms, &unit_columns, target, sw) {
             Some(pred) => {
                 residual = target.iter().zip(&pred).map(|(t, p)| t - p).collect();
-                current_rmse = rms(&residual);
+                current_rmse = wrms(&residual, sw);
             }
             None => break,
         }
-        let scale = rms(target).max(1e-300);
+        let scale = wrms(target, sw).max(1e-300);
         if current_rmse < 1e-13 * scale {
             break;
         }
@@ -588,6 +670,7 @@ fn omp_monomial_fit(
     max_terms: usize,
     deadline: Option<Instant>,
     with_features: bool,
+    sw: Option<&[f64]>,
 ) -> Vec<Vec<Term>> {
     const FRACTIONAL: &[f64] = &[-3.0, -2.0, -1.0, -0.5, 0.5, 1.0, 2.0, 3.0];
     // Two integer dictionaries: the compact +-2 one keeps the selection
@@ -614,6 +697,7 @@ fn omp_monomial_fit(
                 &dictionary,
                 max_terms,
                 deadline,
+                sw,
             ));
         }
     } else {
@@ -659,6 +743,7 @@ fn omp_monomial_fit(
                 &dictionary,
                 max_terms,
                 deadline,
+                sw,
             ));
         }
     }
@@ -673,8 +758,9 @@ fn pursue_dictionary(
     dictionary: &[Term],
     max_terms: usize,
     deadline: Option<Instant>,
+    sw: Option<&[f64]>,
 ) -> Vec<Vec<Term>> {
-    pursue_dictionary_with_starts(inputs, target, dictionary, max_terms, deadline, &[])
+    pursue_dictionary_with_starts(inputs, target, dictionary, max_terms, deadline, &[], sw)
 }
 
 fn pursue_dictionary_with_starts(
@@ -684,6 +770,7 @@ fn pursue_dictionary_with_starts(
     max_terms: usize,
     deadline: Option<Instant>,
     extra_starts: &[usize],
+    sw: Option<&[f64]>,
 ) -> Vec<Vec<Term>> {
     // Deterministic subsample, split 80/20 into a fit part (used for
     // selection and coefficients) and a validation part (used to decide
@@ -703,6 +790,9 @@ fn pursue_dictionary_with_starts(
     }
 
     // Precompute normalized dictionary columns (fit part + validation part).
+    // With sqrt-weights the whole pursuit runs in the row-scaled space: the
+    // fitted coefficients are then exactly the WLS estimates for the
+    // unscaled features.
     let eval_term = |term: &Term, rows: &[usize]| -> Option<Vec<f64>> {
         let mut col = Vec::with_capacity(rows.len());
         for &i in rows {
@@ -717,7 +807,7 @@ fn pursue_dictionary_with_starts(
             if !acc.is_finite() {
                 return None;
             }
-            col.push(acc);
+            col.push(acc * sw_at(sw, i));
         }
         Some(col)
     };
@@ -735,8 +825,8 @@ fn pursue_dictionary_with_starts(
         })
         .collect();
 
-    let sub_target: Vec<f64> = fit_rows.iter().map(|&i| target[i]).collect();
-    let val_target: Vec<f64> = val_rows.iter().map(|&i| target[i]).collect();
+    let sub_target: Vec<f64> = fit_rows.iter().map(|&i| target[i] * sw_at(sw, i)).collect();
+    let val_target: Vec<f64> = val_rows.iter().map(|&i| target[i] * sw_at(sw, i)).collect();
     let scale = rms(&sub_target).max(1e-300);
 
     // Validation RMSE of a support, with coefficients fit on the fit part.
@@ -1009,9 +1099,12 @@ fn pursue_dictionary_with_starts(
         {
             return None;
         }
-        let pred = joint_refit(&mut terms, &full_columns, target)?;
-        let full_scale = rms(target).max(1e-300);
-        let initial_rmse = rmse(&pred, target);
+        let pred = joint_refit_weighted(&mut terms, &full_columns, target, sw)?;
+        let full_scale = wrms(target, sw).max(1e-300);
+        let initial_rmse = {
+            let diff: Vec<f64> = pred.iter().zip(target).map(|(p, t)| p - t).collect();
+            wrms(&diff, sw)
+        };
 
         // Pruning decisions run on a held-out 20% of the data with
         // coefficients fit on the other 80%: junk terms that only chase the
@@ -1025,9 +1118,12 @@ fn pursue_dictionary_with_starts(
             }
             let design: Vec<Vec<f64>> = train_rows
                 .iter()
-                .map(|&r| active.iter().map(|&c| full_columns[c][r]).collect())
+                .map(|&r| {
+                    let s = sw_at(sw, r);
+                    active.iter().map(|&c| full_columns[c][r] * s).collect()
+                })
                 .collect();
-            let train_t: Vec<f64> = train_rows.iter().map(|&r| target[r]).collect();
+            let train_t: Vec<f64> = train_rows.iter().map(|&r| target[r] * sw_at(sw, r)).collect();
             let coeffs = match lstsq(&design, &train_t) {
                 Some(c) => c,
                 None => return f64::INFINITY,
@@ -1035,14 +1131,15 @@ fn pursue_dictionary_with_starts(
             let pred: Vec<f64> = val_rows
                 .iter()
                 .map(|&r| {
+                    let s = sw_at(sw, r);
                     active
                         .iter()
                         .zip(&coeffs)
-                        .map(|(&c, k)| full_columns[c][r] * k)
+                        .map(|(&c, k)| full_columns[c][r] * k * s)
                         .sum::<f64>()
                 })
                 .collect();
-            let val_t: Vec<f64> = val_rows.iter().map(|&r| target[r]).collect();
+            let val_t: Vec<f64> = val_rows.iter().map(|&r| target[r] * sw_at(sw, r)).collect();
             rmse(&pred, &val_t)
         };
 
@@ -1075,11 +1172,14 @@ fn pursue_dictionary_with_starts(
             .filter(|(_, &k)| k)
             .map(|(c, _)| c.clone())
             .collect();
-        let pruned_pred = joint_refit(&mut pruned, &pruned_cols, target)?;
+        let pruned_pred = joint_refit_weighted(&mut pruned, &pruned_cols, target, sw)?;
         // If pruning measurably worsened the fit, also keep the unpruned
         // version so the best-RMSE candidate is never lost — the pruned one
         // still wins on readability whenever the errors tie.
-        let pruned_rmse = rmse(&pruned_pred, target);
+        let pruned_rmse = {
+            let diff: Vec<f64> = pruned_pred.iter().zip(target).map(|(p, t)| p - t).collect();
+            wrms(&diff, sw)
+        };
         let fallback = if pruned.len() < terms.len() && pruned_rmse > initial_rmse * 1.01 {
             Some(terms)
         } else {
@@ -1266,8 +1366,41 @@ fn expression_rmse(
     (acc / ys.len() as f64).sqrt()
 }
 
-/// Prepares the (transform, target, negate) triples valid for this dataset.
-fn prepare_targets(ys: &[f64]) -> Vec<(Transform, Vec<f64>, bool)> {
+/// Per-row sqrt-weights for weighted least squares in a transformed space.
+///
+/// Gaussian noise of size sigma on y becomes non-uniform noise of size
+/// sigma * |T'(y_i)| on the transformed target — OLS then over-fits the
+/// rows where the transform amplifies the noise (e.g. tiny y under 1/y^2).
+/// Weighting each row by w_i = 1 / |T'(y_i)| restores equal noise variance.
+/// Returns sqrt-weights (design rows and targets get scaled by them), or
+/// `None` when the transform does not distort the noise (identity).
+fn transform_sqrt_weights(t: Transform, ys: &[f64]) -> Option<Vec<f64>> {
+    let raw: Vec<f64> = match t {
+        Transform::Id => return None,
+        // |T'(y)| = 1/y            -> w = |y|
+        Transform::Log => ys.iter().map(|&y| y.abs()).collect(),
+        // |T'(y)| = 1/y^2          -> w = y^2
+        Transform::InvY => ys.iter().map(|&y| y * y).collect(),
+        // |T'(y)| = 2/|y|^3        -> w = |y|^3 / 2
+        Transform::InvY2 => ys.iter().map(|&y| y.abs().powi(3) / 2.0).collect(),
+        // |T'(y)| = 2|y|           -> w = 1 / (2|y|)
+        Transform::Y2 => ys.iter().map(|&y| 1.0 / (2.0 * y.abs().max(1e-300))).collect(),
+        // |T'(y)| = 1/(1+y)        -> w = 1 + y
+        Transform::Log1p => ys.iter().map(|&y| (1.0 + y).abs()).collect(),
+        // |T'(y)| = 1/(y(1-y))     -> w = y(1-y)
+        Transform::Logit => ys.iter().map(|&y| (y * (1.0 - y)).abs()).collect(),
+    };
+    let max = raw.iter().cloned().fold(0.0f64, f64::max);
+    if !max.is_finite() || max <= 0.0 {
+        return None;
+    }
+    // Normalize to max 1 and clip from below so no row is fully discarded.
+    Some(raw.iter().map(|&w| (w / max).max(1e-3).sqrt()).collect())
+}
+
+/// Prepares the (transform, target, negate, sqrt-weights) tuples valid for
+/// this dataset.
+fn prepare_targets(ys: &[f64]) -> Vec<(Transform, Vec<f64>, bool, Option<Vec<f64>>)> {
     let all_pos = ys.iter().all(|&y| y > 0.0);
     let all_neg = ys.iter().all(|&y| y < 0.0);
     let ys_abs: Vec<f64> = ys.iter().map(|y| y.abs()).collect();
@@ -1275,14 +1408,15 @@ fn prepare_targets(ys: &[f64]) -> Vec<(Transform, Vec<f64>, bool)> {
     let mut out = Vec::new();
     for &t in TRANSFORMS {
         match t {
-            Transform::Id => out.push((t, ys.to_vec(), false)),
+            Transform::Id => out.push((t, ys.to_vec(), false, None)),
             Transform::Log1p => {
                 // Signed target; defined for 1 + y bounded away from zero.
                 let shifted_ok = ys.iter().all(|&y| 1.0 + y > 1e-9);
                 if shifted_ok {
                     let vals: Vec<f64> = ys.iter().map(|&y| y.ln_1p()).collect();
                     if vals.iter().all(|v| v.is_finite()) {
-                        out.push((t, vals, false));
+                        let sw = transform_sqrt_weights(t, ys);
+                        out.push((t, vals, false, sw));
                     }
                 }
             }
@@ -1290,14 +1424,16 @@ fn prepare_targets(ys: &[f64]) -> Vec<(Transform, Vec<f64>, bool)> {
                 if ys.iter().all(|&y| y > 1e-9 && y < 1.0 - 1e-9) {
                     let vals: Vec<f64> = ys.iter().map(|&y| ((1.0 - y) / y).ln()).collect();
                     if vals.iter().all(|v| v.is_finite()) {
-                        out.push((t, vals, false));
+                        let sw = transform_sqrt_weights(t, ys);
+                        out.push((t, vals, false, sw));
                     }
                 }
             }
             _ => {
                 if all_pos || all_neg {
                     if let Some(vals) = transform_target(t, &ys_abs) {
-                        out.push((t, vals, all_neg));
+                        let sw = transform_sqrt_weights(t, &ys_abs);
+                        out.push((t, vals, all_neg, sw));
                     }
                 }
             }
@@ -1317,12 +1453,21 @@ fn validate_and_assemble(
     fits: &mut Vec<PowerlawFit>,
 ) {
     // Quick numeric validation before assembling the tree.
-    let m_pred: Vec<f64> = {
-        let cols: Vec<Vec<f64>> = terms.iter().map(|t| t.eval_rows(inputs)).collect();
-        (0..ys.len())
-            .map(|i| cols.iter().map(|c| c[i]).sum::<f64>())
-            .collect()
-    };
+    let cols: Vec<Vec<f64>> = terms.iter().map(|t| t.eval_rows(inputs)).collect();
+    let m_pred: Vec<f64> = (0..ys.len())
+        .map(|i| cols.iter().map(|c| c[i]).sum::<f64>())
+        .collect();
+
+    // Cancellation guard: a sum whose individual terms are vastly larger
+    // than the sum itself is the signature of overfit junk (huge opposing
+    // coefficients balanced against each other). Such solutions are also
+    // numerically unstable off the training data, so they are discarded
+    // outright instead of competing on RMSE.
+    let pred_scale = rms(&m_pred).max(1e-300);
+    let term_mass: f64 = cols.iter().map(|c| rms(c)).sum();
+    if terms.len() > 1 && term_mass > 30.0 * pred_scale {
+        return;
+    }
     let y_pred: Vec<f64> = m_pred
         .iter()
         .map(|&m| {
@@ -1376,13 +1521,14 @@ pub fn run_powerlaw(
     let exact = |err: f64| err <= 1e-9 * y_std;
 
     // ---- Pass 1: greedy log-fit boosting + basic monomial dictionaries ----
-    for (t, t_target, negate) in &targets {
+    for (t, t_target, negate, sw) in &targets {
         if deadline.map_or(false, |dl| Instant::now() >= dl) {
             break;
         }
+        let sw = sw.as_deref();
         let mut candidates: Vec<Vec<Term>> = Vec::new();
         if let Some(terms) =
-            greedy_monomial_fit(inputs, t_target, &positive, config.max_boost_terms)
+            greedy_monomial_fit(inputs, t_target, &positive, config.max_boost_terms, sw)
         {
             candidates.push(terms);
         }
@@ -1394,6 +1540,7 @@ pub fn run_powerlaw(
             config.max_boost_terms,
             deadline,
             false,
+            sw,
         ));
         for terms in candidates {
             validate_and_assemble(*t, *negate, &terms, inputs, ys, reg, &mut fits);
@@ -1403,7 +1550,7 @@ pub fn run_powerlaw(
     // ---- Pass 2: feature-augmented dictionary, only when still unsolved ----
     let best_so_far = fits.iter().map(|f| f.error).fold(f64::INFINITY, f64::min);
     if !exact(best_so_far) {
-        for (t, t_target, negate) in &targets {
+        for (t, t_target, negate, sw) in &targets {
             if deadline.map_or(false, |dl| Instant::now() >= dl) {
                 break;
             }
@@ -1415,6 +1562,7 @@ pub fn run_powerlaw(
                 config.max_boost_terms,
                 deadline,
                 true,
+                sw.as_deref(),
             ) {
                 validate_and_assemble(*t, *negate, &terms, inputs, ys, reg, &mut fits);
             }
@@ -1422,6 +1570,57 @@ pub fn run_powerlaw(
     }
 
     fits.sort_by(|a, b| a.error.partial_cmp(&b.error).unwrap());
+
+    // Validation-ranked reorder with a one-standard-error band (P4-1): the
+    // raw full-data error is a training error, so a junk multi-term fit can
+    // edge out the true structure by chasing the noise. Candidates whose
+    // held-out error is within one standard error of the best are ordered
+    // simplest-first instead.
+    let n = ys.len();
+    let val_rows: Vec<usize> = (0..n).filter(|i| i % 5 == 4).collect();
+    if val_rows.len() >= 10 && fits.len() > 1 {
+        let val_inputs: Vec<Vec<f64>> = val_rows.iter().map(|&i| inputs[i].clone()).collect();
+        let val_ys: Vec<f64> = val_rows.iter().map(|&i| ys[i]).collect();
+        let vals: Vec<f64> = fits
+            .iter()
+            .map(|f| expression_rmse(&f.expression, &val_inputs, &val_ys, reg))
+            .collect();
+        let best_val = vals.iter().cloned().fold(f64::INFINITY, f64::min);
+        if best_val.is_finite() {
+            let eps = (1.0 / (2.0 * val_rows.len() as f64).sqrt()).clamp(0.01, 0.15);
+            let band = best_val * (1.0 + eps);
+            let mut idx: Vec<usize> = (0..fits.len()).collect();
+            idx.sort_by(|&a, &b| {
+                let in_a = vals[a] <= band;
+                let in_b = vals[b] <= band;
+                in_b.cmp(&in_a)
+                    .then_with(|| {
+                        if in_a && in_b {
+                            fits[a]
+                                .expression
+                                .complexity()
+                                .cmp(&fits[b].expression.complexity())
+                        } else {
+                            std::cmp::Ordering::Equal
+                        }
+                    })
+                    .then_with(|| {
+                        vals[a]
+                            .partial_cmp(&vals[b])
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    })
+            });
+            let mut reordered = Vec::with_capacity(fits.len());
+            for i in idx {
+                let f = &fits[i];
+                reordered.push(PowerlawFit {
+                    expression: f.expression.clone(),
+                    error: f.error,
+                });
+            }
+            fits = reordered;
+        }
+    }
     fits
 }
 
@@ -1562,6 +1761,10 @@ pub fn run_rational(
             config.max_boost_terms,
             deadline,
             &q_starts,
+            // No transform is applied here (the linearized y*Q = P target is
+            // in raw units); the remaining errors-in-variables bias from the
+            // noisy y-columns is handled by the raw-space LM polish instead.
+            None,
         ) {
             // Split into P (y-exponent 0) and Q (y-exponent 1) parts.
             let mut p_terms: Vec<Term> = Vec::new();
@@ -2231,5 +2434,131 @@ mod v4_tests {
             "error too large: {}",
             fits[0].error
         );
+    }
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+    use crate::config::SearchConfig;
+    use crate::ops::registry::OperatorRegistry;
+
+    fn lcg(seed: &mut u64) -> f64 {
+        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((*seed >> 33) as f64) / (u64::MAX >> 33) as f64
+    }
+
+    fn gauss(seed: &mut u64) -> f64 {
+        let u1 = lcg(seed).max(1e-12);
+        let u2 = lcg(seed);
+        (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+
+    fn clean_rmse_on(
+        expr: &crate::core::expression::Expression,
+        inputs: &[Vec<f64>],
+        clean: &[f64],
+        reg: &OperatorRegistry,
+    ) -> f64 {
+        expression_rmse(expr, inputs, clean, reg)
+    }
+
+    /// P1-1: WLS in the InvY2 space keeps the Lorentz family recoverable
+    /// under 1% gaussian noise. Without weights the 1/y^2 transform blows the
+    /// noise up on the small-y rows and drags the fit off the true structure.
+    #[test]
+    fn wls_recovers_noisy_lorentz() {
+        let mut seed = 99u64;
+        let mut inputs = Vec::new();
+        for _ in 0..750 {
+            let x = -4.0 + 8.0 * lcg(&mut seed);
+            inputs.push(vec![x]);
+        }
+        let clean: Vec<f64> = inputs.iter().map(|r| 1.0 / (1.0 + r[0] * r[0])).collect();
+        let y_std = {
+            let m = clean.iter().sum::<f64>() / clean.len() as f64;
+            (clean.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / clean.len() as f64).sqrt()
+        };
+        let sigma = 0.01 * y_std;
+        // Keep y positive so the InvY/InvY2 transforms stay in play.
+        let ys: Vec<f64> = clean
+            .iter()
+            .map(|&c| (c + sigma * gauss(&mut seed)).max(1e-4))
+            .collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let best_clean = fits
+            .iter()
+            .take(5)
+            .map(|f| clean_rmse_on(&f.expression, &inputs, &clean, &reg))
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            best_clean < 0.5 * sigma,
+            "Lorentz not recovered under noise: clean rmse {} vs sigma {}",
+            best_clean,
+            sigma
+        );
+    }
+
+    /// P1-3: under noise the continuous-exponent refinement must not drift
+    /// off a clean integer exponent (validation-gated rounding preference).
+    #[test]
+    fn exponent_stays_rounded_under_noise() {
+        let mut seed = 7u64;
+        let mut inputs = Vec::new();
+        for _ in 0..750 {
+            inputs.push(vec![0.5 + 4.0 * lcg(&mut seed)]);
+        }
+        let clean: Vec<f64> = inputs.iter().map(|r| 3.0 * r[0] * r[0] + 0.5).collect();
+        let y_std = {
+            let m = clean.iter().sum::<f64>() / clean.len() as f64;
+            (clean.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / clean.len() as f64).sqrt()
+        };
+        let sigma = 0.01 * y_std;
+        let ys: Vec<f64> = clean.iter().map(|&c| c + sigma * gauss(&mut seed)).collect();
+        let terms = greedy_monomial_fit(&inputs, &ys, &[0], 6, None).expect("greedy fit");
+        let power_term = terms
+            .iter()
+            .find(|t| t.exponents.iter().any(|&e| e != 0.0))
+            .expect("power term");
+        assert_eq!(
+            power_term.exponents[0], 2.0,
+            "noise dragged the exponent off 2.0: {}",
+            power_term.exponents[0]
+        );
+    }
+
+    /// P4-2: a sum of huge mutually-cancelling terms must be rejected by the
+    /// cancellation guard even when its residual looks fine on the samples.
+    #[test]
+    fn cancellation_guard_rejects_junk() {
+        let mut seed = 21u64;
+        let mut inputs = Vec::new();
+        for _ in 0..200 {
+            inputs.push(vec![1.0 + 2.0 * lcg(&mut seed), 1.0 + 2.0 * lcg(&mut seed)]);
+        }
+        let ys: Vec<f64> = inputs.iter().map(|r| r[0] + r[1]).collect();
+        let reg = OperatorRegistry::with_builtins();
+
+        // Junk: two gigantic opposing terms that cancel to something small.
+        let junk = vec![
+            Term { coeff: 1e7, exponents: vec![1.0, 0.0], feature: Feature::None },
+            Term { coeff: -1e7, exponents: vec![1.0, 0.0], feature: Feature::None },
+            Term { coeff: 1.0, exponents: vec![0.0, 1.0], feature: Feature::None },
+        ];
+        let mut fits: Vec<PowerlawFit> = Vec::new();
+        validate_and_assemble(Transform::Id, false, &junk, &inputs, &ys, &reg, &mut fits);
+        assert!(fits.is_empty(), "cancellation guard failed to reject junk");
+
+        // Legitimate multi-term sums must pass untouched.
+        let good = vec![
+            Term { coeff: 1.0, exponents: vec![1.0, 0.0], feature: Feature::None },
+            Term { coeff: 1.0, exponents: vec![0.0, 1.0], feature: Feature::None },
+        ];
+        let mut fits2: Vec<PowerlawFit> = Vec::new();
+        validate_and_assemble(Transform::Id, false, &good, &inputs, &ys, &reg, &mut fits2);
+        assert!(!fits2.is_empty(), "guard rejected a legitimate sum");
     }
 }
