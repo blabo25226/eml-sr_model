@@ -176,3 +176,23 @@ pub fn c_atanh(z: Value) -> Option<Value> {
     let l2 = c_ln(one - z)?;
     Some(real(0.5) * (l1 - l2))
 }
+
+#[inline]
+pub fn c_abs(z: Value) -> Option<Value> {
+    Some(real(z.norm()))
+}
+
+#[inline]
+pub fn c_sigmoid(z: Value) -> Option<Value> {
+    Some(real(1.0) / (real(1.0) + (-z).exp()))
+}
+
+#[inline]
+pub fn c_min(a: Value, b: Value) -> Option<Value> {
+    Some(if a.re <= b.re { a } else { b })
+}
+
+#[inline]
+pub fn c_max(a: Value, b: Value) -> Option<Value> {
+    Some(if a.re >= b.re { a } else { b })
+}

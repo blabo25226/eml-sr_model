@@ -64,6 +64,10 @@ impl Operator for Inv {
 }
 
 binary_op!(Plus,     "Plus",     true,  |a, b| Some(a + b),        "{0} + {1}", "({0})+({1})");
+#[cfg(feature = "full-math")]
+binary_op!(Min,      "Min",      true,  value::c_min,              r"\min({0}, {1})", "np.minimum({0}, {1})");
+#[cfg(feature = "full-math")]
+binary_op!(Max,      "Max",      true,  value::c_max,              r"\max({0}, {1})", "np.maximum({0}, {1})");
 binary_op!(Times,    "Times",    true,  |a, b| Some(a * b),        "{0} \\cdot {1}", "({0})*({1})");
 binary_op!(Subtract, "Subtract", false, |a, b| Some(a - b),        "{0} - {1}", "({0})-({1})");
 
@@ -102,6 +106,10 @@ unary_op!(ArcCos, "ArcCos", value::c_acos,  r"\arccos({0})",     "np.arccos({0})
 unary_op!(ArcTan, "ArcTan", value::c_atan,  r"\arctan({0})",     "np.arctan({0})",   "ArcTan[{0}]");
 #[cfg(feature = "full-math")]
 unary_op!(Tanh,   "Tanh",   value::c_tanh,  r"\tanh({0})",       "np.tanh({0})",   "Tanh[{0}]");
+#[cfg(feature = "full-math")]
+unary_op!(Abs,    "Abs",    value::c_abs,   r"\left|{0}\right|", "np.abs({0})",   "Abs[{0}]");
+#[cfg(feature = "full-math")]
+unary_op!(Sigmoid, "Sigmoid", value::c_sigmoid, r"\sigma({0})",   "(1/(1+np.exp(-({0}))))", "Sigmoid[{0}]");
 
 #[derive(Debug)]
 pub struct Pow;
@@ -151,6 +159,8 @@ pub fn all_builtins() -> Vec<Box<dyn Operator>> {
         ops.push(Box::new(Sin));    ops.push(Box::new(Cos));    ops.push(Box::new(Tan));
         ops.push(Box::new(ArcSin)); ops.push(Box::new(ArcCos)); ops.push(Box::new(ArcTan));
         ops.push(Box::new(Tanh));
+        ops.push(Box::new(Abs));    ops.push(Box::new(Sigmoid));
+        ops.push(Box::new(Min));    ops.push(Box::new(Max));
     }
 
     ops

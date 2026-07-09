@@ -163,8 +163,12 @@ pub enum Feature {
     Cos2x(usize),
     /// ln(x_i)
     Ln(usize),
+    /// sigmoid(x_i) = 1/(1+e^{-x_i})
+    Sigmoid(usize),
     /// (x_i - x_j)^2
     DiffSq(usize, usize),
+    /// |x_i - x_j|
+    AbsDiff(usize, usize),
     /// cos(x_i - x_j)
     CosDiff(usize, usize),
     /// cos(x_i * x_j)
@@ -187,8 +191,10 @@ impl Feature {
             | Feature::Cos(i)
             | Feature::Sin2x(i)
             | Feature::Cos2x(i)
-            | Feature::Ln(i) => vec![i],
+            | Feature::Ln(i)
+            | Feature::Sigmoid(i) => vec![i],
             Feature::DiffSq(i, j)
+            | Feature::AbsDiff(i, j)
             | Feature::CosDiff(i, j)
             | Feature::CosProd(i, j)
             | Feature::SinProd(i, j)
@@ -206,10 +212,12 @@ impl Feature {
             Feature::Sin2x(i) => (2.0 * row[i]).sin(),
             Feature::Cos2x(i) => (2.0 * row[i]).cos(),
             Feature::Ln(i) => row[i].ln(),
+            Feature::Sigmoid(i) => 1.0 / (1.0 + (-row[i]).exp()),
             Feature::DiffSq(i, j) => {
                 let d = row[i] - row[j];
                 d * d
             }
+            Feature::AbsDiff(i, j) => (row[i] - row[j]).abs(),
             Feature::CosDiff(i, j) => (row[i] - row[j]).cos(),
             Feature::CosProd(i, j) => (row[i] * row[j]).cos(),
             Feature::SinProd(i, j) => (row[i] * row[j]).sin(),
@@ -227,8 +235,12 @@ impl Feature {
             Feature::Sin2x(i) => unary("Sin", binary("Times", num(2.0), var(i), reg), reg),
             Feature::Cos2x(i) => unary("Cos", binary("Times", num(2.0), var(i), reg), reg),
             Feature::Ln(i) => unary("Log", var(i), reg),
+            Feature::Sigmoid(i) => unary("Sigmoid", var(i), reg),
             Feature::DiffSq(i, j) => {
                 unary("Square", binary("Subtract", var(i), var(j), reg), reg)
+            }
+            Feature::AbsDiff(i, j) => {
+                unary("Abs", binary("Subtract", var(i), var(j), reg), reg)
             }
             Feature::CosDiff(i, j) => {
                 unary("Cos", binary("Subtract", var(i), var(j), reg), reg)
