@@ -290,8 +290,10 @@ fn greedy_monomial_fit(
             None => break,
         };
 
-        // Pick the exponent rounding whose refitted single term reduces the
-        // residual the most.
+        // Pick the exponent rounding whose refitted term reduces the residual
+        // the most. The fit includes an intercept so that a constant offset
+        // (e.g. 1/y = 1/E + (K^n/E) x^{-n} in a Hill law) does not drag the
+        // exponent estimate toward a compromise value.
         let mut best: Option<(Term, Vec<f64>, f64)> = None;
         for exps in exponent_candidates(&raw_exps) {
             let unit = Monomial {
@@ -302,14 +304,16 @@ fn greedy_monomial_fit(
             if column.iter().any(|v| !v.is_finite()) {
                 continue;
             }
-            let coeff = match refit_coeff(&column, &residual) {
-                Some(c) => c,
+            let design: Vec<Vec<f64>> = column.iter().map(|&c| vec![1.0, c]).collect();
+            let sol = match lstsq(&design, &residual) {
+                Some(s) => s,
                 None => continue,
             };
+            let (c0, coeff) = (sol[0], sol[1]);
             let new_res: Vec<f64> = residual
                 .iter()
                 .zip(&column)
-                .map(|(r, c)| r - coeff * c)
+                .map(|(r, c)| r - c0 - coeff * c)
                 .collect();
             let err = rms(&new_res);
             if best.as_ref().map_or(true, |(_, _, e)| err < *e) {
@@ -324,11 +328,75 @@ fn greedy_monomial_fit(
                 ));
             }
         }
-        let (term, column, err) = best?;
+        let (mut term, mut column, mut err) = best?;
+
+        // Single-variable continuous-exponent refinement: when the term uses
+        // exactly one variable, the true exponent may be far from every
+        // rounding candidate (the raw log-fit is dragged by an intercept,
+        // e.g. Hill laws). Ternary-search the exponent against the
+        // intercept-aware fit error.
+        let active: Vec<usize> = (0..term.exponents.len())
+            .filter(|&j| term.exponents[j] != 0.0)
+            .collect();
+        if active.len() == 1 {
+            let j = active[0];
+            let score_exp = |e: f64| -> Option<(f64, f64, f64, Vec<f64>)> {
+                let mut exps = vec![0.0; term.exponents.len()];
+                exps[j] = e;
+                let col = Monomial {
+                    coeff: 1.0,
+                    exponents: exps,
+                }
+                .eval_rows(inputs);
+                if col.iter().any(|v| !v.is_finite()) {
+                    return None;
+                }
+                let design: Vec<Vec<f64>> = col.iter().map(|&c| vec![1.0, c]).collect();
+                let sol = lstsq(&design, &residual)?;
+                let res: Vec<f64> = residual
+                    .iter()
+                    .zip(&col)
+                    .map(|(r, c)| r - sol[0] - sol[1] * c)
+                    .collect();
+                Some((rms(&res), sol[1], sol[0], col))
+            };
+            let (mut lo, mut hi) = (term.exponents[j] - 2.0, term.exponents[j] + 2.0);
+            for _ in 0..40 {
+                let m1 = lo + (hi - lo) / 3.0;
+                let m2 = hi - (hi - lo) / 3.0;
+                let e1 = score_exp(m1).map(|v| v.0).unwrap_or(f64::INFINITY);
+                let e2 = score_exp(m2).map(|v| v.0).unwrap_or(f64::INFINITY);
+                if e1 <= e2 {
+                    hi = m2;
+                } else {
+                    lo = m1;
+                }
+            }
+            let e_star = (lo + hi) / 2.0;
+            if let Some((e_err, coeff, _c0, col)) = score_exp(e_star) {
+                if e_err < err {
+                    term.exponents[j] = e_star;
+                    term.coeff = coeff;
+                    column = col;
+                    err = e_err;
+                }
+            }
+        }
 
         // Require a meaningful reduction to keep adding terms.
         if err > 0.85 * current_rmse {
             break;
+        }
+        let has_const = terms
+            .iter()
+            .any(|t| t.exponents.iter().all(|&e| e == 0.0) && t.feature == Feature::None);
+        if !has_const && !term.exponents.iter().all(|&e| e == 0.0) {
+            terms.push(Term {
+                coeff: 0.0,
+                exponents: vec![0.0; inputs[0].len()],
+                feature: Feature::None,
+            });
+            unit_columns.push(vec![1.0; target.len()]);
         }
         terms.push(term);
         unit_columns.push(column);
@@ -434,6 +502,7 @@ fn build_feature_dictionary(
         features.push(Feature::Cos(i));
         features.push(Feature::Sin2x(i));
         features.push(Feature::Cos2x(i));
+        features.push(Feature::Sigmoid(i));
     }
     for &i in positive {
         features.push(Feature::Ln(i));
@@ -441,6 +510,7 @@ fn build_feature_dictionary(
     for (a, &i) in real.iter().enumerate() {
         for &j in real.iter().skip(a + 1) {
             features.push(Feature::DiffSq(i, j));
+            features.push(Feature::AbsDiff(i, j));
             features.push(Feature::CosDiff(i, j));
             features.push(Feature::CosProd(i, j));
             features.push(Feature::SinProd(i, j));
@@ -464,14 +534,16 @@ fn build_feature_dictionary(
         (&[-1.0, 1.0], 1),
     ];
     let per_feature_budget = size_limit / features.len();
+    // Fractional exponents only make sense on positive variables; when no
+    // variable is strictly positive, fractional configurations would leave
+    // the monomial part empty, so they are skipped outright.
     let (exps, cap) = CONFIGS
         .iter()
+        .filter(|(e, _)| positive.is_empty() == false || e.iter().all(|x| x.fract() == 0.0))
         .find(|(e, c)| dict_size_estimate(real.len(), e.len(), *c) <= per_feature_budget)
         .copied()
         .unwrap_or((&[-1.0, 1.0], 1));
 
-    // Fractional exponents only make sense on positive variables; integer
-    // configurations may use every finite variable.
     let has_fractional = exps.iter().any(|e| e.fract() != 0.0);
     let mono_vars: &[usize] = if has_fractional { positive } else { real };
     let base = enumerate_exponents(d, mono_vars, exps, cap.min(mono_vars.len().max(1)));
@@ -564,6 +636,7 @@ fn omp_monomial_fit(
                         Feature::Cos(i),
                         Feature::Sin2x(i),
                         Feature::Cos2x(i),
+                        Feature::Sigmoid(i),
                     ] {
                         dictionary.push(Term {
                             coeff: 1.0,
@@ -2027,3 +2100,136 @@ mod v3_tests {
 
 
 
+
+#[cfg(test)]
+mod v4_tests {
+    use super::*;
+    use crate::config::SearchConfig;
+    use crate::engine::bfs;
+    use crate::ops::registry::OperatorRegistry;
+
+    fn lcg(seed: &mut u64) -> f64 {
+        *seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (*seed >> 11) as f64 / (1u64 << 53) as f64
+    }
+
+    fn rand_rows(n: usize, d: usize, lo: f64, hi: f64, seed: u64) -> Vec<Vec<f64>> {
+        let mut s = seed;
+        (0..n)
+            .map(|_| (0..d).map(|_| lo + (hi - lo) * lcg(&mut s)).collect())
+            .collect()
+    }
+
+    fn best_pipeline_error(inputs: &[Vec<f64>], ys: &[f64]) -> f64 {
+        // Full pipeline via public Searcher API.
+        let mut cfg = SearchConfig::fable_default();
+        cfg.max_complexity = 6;
+        cfg.beam_width = 500;
+        cfg.time_budget_s = 60.0;
+        cfg.verbose = false;
+        cfg.allow_approximate = true;
+        let results = crate::engine::fable::run_fable(inputs, ys, &cfg).expect("search");
+        results
+            .iter()
+            .map(|r| {
+                let preds: Vec<f64> = inputs.iter().map(|row| {
+                    let vals: Vec<crate::core::value::Value> =
+                        row.iter().map(|&v| crate::core::value::real(v)).collect();
+                    let reg = OperatorRegistry::with_builtins();
+                    let _ = &reg;
+                    r.eval_multi(row)
+                }).collect();
+                let _ = &preds;
+                rmse(&preds, ys)
+            })
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    #[test]
+    fn recovers_abs_diff_times_z() {
+        // y = |x0 - x1| * x2 — AbsDiff feature x monomial
+        let inputs = rand_rows(750, 3, -3.0, 3.0, 77);
+        let ys: Vec<f64> = inputs.iter().map(|r| (r[0] - r[1]).abs() * r[2]).collect();
+        let err = best_pipeline_error(&inputs, &ys);
+        let scale = rms(&ys);
+        assert!(err < 1e-8 * scale, "error too large: {err}");
+    }
+
+    #[test]
+    fn recovers_sigmoid_component() {
+        // y = 2*sigmoid(x0) + x1 — Sigmoid feature + monomial
+        let inputs = rand_rows(750, 2, -3.0, 3.0, 88);
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| 2.0 / (1.0 + (-r[0]).exp()) + r[1])
+            .collect();
+        let err = best_pipeline_error(&inputs, &ys);
+        let scale = rms(&ys);
+        assert!(err < 1e-8 * scale, "error too large: {err}");
+    }
+
+    #[test]
+    fn recovers_min_via_beam() {
+        // y = min(x0, x1) — 3-node beam structure
+        let inputs = rand_rows(400, 2, -3.0, 3.0, 99);
+        let ys: Vec<f64> = inputs.iter().map(|r| r[0].min(r[1])).collect();
+        let mut cfg = SearchConfig::fable_default();
+        cfg.max_complexity = 4;
+        cfg.beam_width = 300;
+        cfg.verbose = false;
+        cfg.allow_approximate = true;
+        let results = bfs::run_bfs(&inputs, &ys, &cfg).expect("search");
+        let best = results
+            .iter()
+            .map(|r| {
+                let preds: Vec<f64> = inputs.iter().map(|row| r.eval_multi(row)).collect();
+                rmse(&preds, &ys)
+            })
+            .fold(f64::INFINITY, f64::min);
+        let scale = rms(&ys);
+        assert!(best < 1e-8 * scale, "error too large: {best}");
+    }
+
+    #[test]
+    fn recovers_continuous_exponent() {
+        // y = 2 * x^1.7 — continuous exponent via greedy raw-exponent fit
+        let inputs = rand_rows(750, 1, 0.5, 5.0, 111);
+        let ys: Vec<f64> = inputs.iter().map(|r| 2.0 * r[0].powf(1.7)).collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let scale = rms(&ys);
+        assert!(
+            fits[0].error < 1e-8 * scale,
+            "error too large: {}",
+            fits[0].error
+        );
+    }
+
+    #[test]
+    fn recovers_hill_equation() {
+        // y = 3*x^2.5/(x^2.5 + 2^2.5) — Hill; InvY makes it 1/y = 1/3 + (2^2.5/3) x^{-2.5}
+        let inputs = rand_rows(750, 1, 0.3, 6.0, 222);
+        let k = 2.0f64.powf(2.5);
+        let ys: Vec<f64> = inputs
+            .iter()
+            .map(|r| {
+                let p = r[0].powf(2.5);
+                3.0 * p / (p + k)
+            })
+            .collect();
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let scale = rms(&ys);
+        assert!(
+            fits[0].error < 1e-7 * scale,
+            "error too large: {}",
+            fits[0].error
+        );
+    }
+}
