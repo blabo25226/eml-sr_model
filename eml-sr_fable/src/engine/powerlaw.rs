@@ -1199,6 +1199,77 @@ fn pursue_dictionary_with_starts(
         } else {
             None
         };
+
+        // P5-1: robust (Huber-IRLS) refit of the pruned support. Real data
+        // carries occasional outliers (sensor glitches, recording errors)
+        // that drag the least-squares coefficients; IRLS caps their
+        // influence. The robust coefficients are kept only when the
+        // held-out error improves.
+        if !val_rows.is_empty() && !pruned.is_empty() {
+            let val_err_for = |coeffs: &[f64]| -> f64 {
+                let mut acc = 0.0;
+                for &r in &val_rows {
+                    let pred: f64 = coeffs
+                        .iter()
+                        .zip(&pruned_cols)
+                        .map(|(c, col)| c * col[r])
+                        .sum();
+                    let d = (pred - target[r]) * sw_at(sw, r);
+                    if !d.is_finite() {
+                        return f64::INFINITY;
+                    }
+                    acc += d * d;
+                }
+                (acc / val_rows.len() as f64).sqrt()
+            };
+            let ols_coeffs: Vec<f64> = pruned.iter().map(|t| t.coeff).collect();
+            let base_val = val_err_for(&ols_coeffs);
+            let mut hcoeffs = ols_coeffs.clone();
+            for _ in 0..3 {
+                let resid: Vec<f64> = (0..target.len())
+                    .map(|r| {
+                        let pred: f64 = hcoeffs
+                            .iter()
+                            .zip(&pruned_cols)
+                            .map(|(c, col)| c * col[r])
+                            .sum();
+                        (target[r] - pred) * sw_at(sw, r)
+                    })
+                    .collect();
+                let mut abs: Vec<f64> = resid.iter().map(|v| v.abs()).collect();
+                abs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                let mad = abs[abs.len() / 2] * 1.4826;
+                if !(mad.is_finite()) || mad < 1e-14 * full_scale {
+                    break;
+                }
+                let cutoff = 1.345 * mad;
+                let design: Vec<Vec<f64>> = train_rows
+                    .iter()
+                    .map(|&r| {
+                        let hw = (cutoff / resid[r].abs().max(1e-300)).min(1.0).sqrt();
+                        let s = sw_at(sw, r) * hw;
+                        pruned_cols.iter().map(|col| col[r] * s).collect()
+                    })
+                    .collect();
+                let t_w: Vec<f64> = train_rows
+                    .iter()
+                    .map(|&r| {
+                        let hw = (cutoff / resid[r].abs().max(1e-300)).min(1.0).sqrt();
+                        target[r] * sw_at(sw, r) * hw
+                    })
+                    .collect();
+                match lstsq(&design, &t_w) {
+                    Some(c) if c.iter().all(|v| v.is_finite()) => hcoeffs = c,
+                    _ => break,
+                }
+            }
+            if val_err_for(&hcoeffs) < base_val * 0.999 {
+                for (t, &c) in pruned.iter_mut().zip(&hcoeffs) {
+                    t.coeff = c;
+                }
+            }
+        }
+
         Some((pruned, fallback))
     };
 
@@ -2742,6 +2813,67 @@ mod v5_struct_tests {
         assert!(
             best_clean < 0.5 * sigma,
             "noisy sigmoid gate not recovered: clean rmse {} vs sigma {}",
+            best_clean,
+            sigma
+        );
+    }
+}
+
+#[cfg(test)]
+mod v5_robust_tests {
+    use super::*;
+    use crate::config::SearchConfig;
+    use crate::ops::registry::OperatorRegistry;
+
+    fn lcg(seed: &mut u64) -> f64 {
+        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((*seed >> 33) as f64) / (u64::MAX >> 33) as f64
+    }
+
+    fn gauss(seed: &mut u64) -> f64 {
+        let u1 = lcg(seed).max(1e-12);
+        let u2 = lcg(seed);
+        (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    }
+
+    /// P5-1: 1% gaussian noise plus 5% outliers at 10 sigma. The Huber-IRLS
+    /// refit must keep the recovered coefficients near the truth instead of
+    /// letting the outliers drag them.
+    #[test]
+    fn huber_refit_survives_outliers() {
+        let mut seed = 23u64;
+        let mut inputs = Vec::new();
+        for _ in 0..750 {
+            let a = 1.0 + 4.0 * lcg(&mut seed);
+            let b = 1.0 + 4.0 * lcg(&mut seed);
+            inputs.push(vec![a, b]);
+        }
+        let clean: Vec<f64> = inputs.iter().map(|r| 2.0 * r[0] + 3.0 * r[1]).collect();
+        let y_std = {
+            let m = clean.iter().sum::<f64>() / clean.len() as f64;
+            (clean.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / clean.len() as f64).sqrt()
+        };
+        let sigma = 0.01 * y_std;
+        let mut ys: Vec<f64> = clean.iter().map(|&c| c + sigma * gauss(&mut seed)).collect();
+        // 5% outliers at +-10 sigma.
+        let n_out = ys.len() / 20;
+        for k in 0..n_out {
+            let pos = (k * 997) % ys.len();
+            let sign = if k % 2 == 0 { 1.0 } else { -1.0 };
+            ys[pos] += sign * 10.0 * sigma;
+        }
+        let reg = OperatorRegistry::with_builtins();
+        let cfg = SearchConfig::fable_default();
+        let fits = run_powerlaw(&inputs, &ys, &cfg, &reg, None);
+        assert!(!fits.is_empty());
+        let best_clean = fits
+            .iter()
+            .take(5)
+            .map(|f| expression_rmse(&f.expression, &inputs, &clean, &reg))
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            best_clean < 0.5 * sigma,
+            "outliers dragged the fit: clean rmse {} vs sigma {}",
             best_clean,
             sigma
         );
