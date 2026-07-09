@@ -464,6 +464,17 @@ pub fn run_fable(
         });
     }
 
+    // ---- Residual boosting (P3-1) ----
+    // When the best candidate sits in the "close but not exact" band, the
+    // structure is usually right but a smaller additive component is missing
+    // (and often beyond the complexity budget of a single search). One extra
+    // closed-form pass on the residual y - f1 recovers it. The combined
+    // candidate is accepted only when the held-out error clearly improves,
+    // so noise-chasing additions never make it into the pool.
+    if config.powerlaw_stage {
+        residual_boost(&mut pool, inputs, ys, config, &registry, deadline);
+    }
+
     if config.verbose {
         let best = pool
             .iter()
@@ -477,6 +488,75 @@ pub fn run_fable(
     }
 
     Ok(finalize_pool(pool, inputs, ys, config, &registry))
+}
+
+/// One round of closed-form residual boosting: fit Stage A on y - f1 for the
+/// current best candidate f1 and add f1 + g when validation improves >= 10%.
+fn residual_boost(
+    pool: &mut Vec<(f64, Expression)>,
+    inputs: &[Vec<f64>],
+    ys: &[f64],
+    config: &SearchConfig,
+    registry: &Arc<OperatorRegistry>,
+    deadline: Option<Instant>,
+) {
+    let y_std = std_dev(ys).max(1e-30);
+    let (best_err, best_expr) = match pool
+        .iter()
+        .filter(|(e, _)| e.is_finite())
+        .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+    {
+        Some((e, x)) => (*e, x.clone()),
+        None => return,
+    };
+    // Only the "close but not exact" band benefits: exact fits need nothing,
+    // and a badly wrong f1 would just seed a junk correction.
+    if !(best_err > 1e-4 * y_std && best_err < 0.2 * y_std) {
+        return;
+    }
+
+    // Residual of f1 on all rows.
+    let mut residual = Vec::with_capacity(ys.len());
+    for (row, &y) in inputs.iter().zip(ys) {
+        let vals: Vec<crate::core::value::Value> = row.iter().map(|&v| real(v)).collect();
+        match best_expr.eval(&vals, registry) {
+            Some(v) if is_usable(v) && v.im.abs() < 1e-6 * v.re.abs().max(1.0) => {
+                residual.push(y - v.re);
+            }
+            _ => return,
+        }
+    }
+
+    let t0 = Instant::now();
+    let boost_deadline = Some(
+        deadline
+            .unwrap_or(t0 + Duration::from_secs(10))
+            .min(t0 + Duration::from_secs(10)),
+    );
+    let fits = powerlaw::run_powerlaw(inputs, &residual, config, registry, boost_deadline);
+
+    let n = ys.len();
+    let val_rows: Vec<usize> = (0..n).filter(|i| i % 5 == 4).collect();
+    if val_rows.len() < 10 {
+        return;
+    }
+    let val_inputs: Vec<Vec<f64>> = val_rows.iter().map(|&i| inputs[i].clone()).collect();
+    let val_ys: Vec<f64> = val_rows.iter().map(|&i| ys[i]).collect();
+    let base_val = expr_error(&best_expr, &val_inputs, &val_ys, registry);
+    if !base_val.is_finite() {
+        return;
+    }
+
+    for fit in fits.into_iter().take(5) {
+        let combined = build::binary("Plus", best_expr.clone(), fit.expression, registry);
+        let comb_val = expr_error(&combined, &val_inputs, &val_ys, registry);
+        if comb_val < 0.9 * base_val {
+            let full = expr_error(&combined, inputs, ys, registry);
+            if full.is_finite() && full < best_err {
+                pool.push((full, combined));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -570,6 +650,52 @@ mod v5_tests {
             "rational not recovered under noise: clean rmse {} vs sigma {}",
             best_clean,
             sigma
+        );
+    }
+}
+
+#[cfg(test)]
+mod v5_boost_tests {
+    use super::*;
+
+    fn lcg(seed: &mut u64) -> f64 {
+        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((*seed >> 33) as f64) / (u64::MAX >> 33) as f64
+    }
+
+    /// P3-1: with a partially-correct f1 in the pool, one closed-form pass on
+    /// the residual recovers the missing additive component.
+    #[test]
+    fn residual_boost_completes_partial_fit() {
+        let registry = Arc::new(OperatorRegistry::with_builtins());
+        let mut seed = 3u64;
+        let mut inputs = Vec::new();
+        for _ in 0..500 {
+            let x = -2.0 + 4.0 * lcg(&mut seed);
+            let z = -3.0 + 6.0 * lcg(&mut seed);
+            inputs.push(vec![x, z]);
+        }
+        // y = x^2 + 0.05 z: the second term is ~5% of the signal, i.e. the
+        // "close but not exact" band residual boosting is built for.
+        let ys: Vec<f64> = inputs.iter().map(|r| r[0] * r[0] + 0.05 * r[1]).collect();
+
+        let f1 = build::unary("Square", build::var(0), &registry);
+        let f1_err = expr_error(&f1, &inputs, &ys, &registry);
+        assert!(f1_err.is_finite() && f1_err > 0.0);
+
+        let config = SearchConfig::fable_default();
+        let mut pool = vec![(f1_err, f1)];
+        residual_boost(&mut pool, &inputs, &ys, &config, &registry, None);
+
+        let best = pool
+            .iter()
+            .map(|(e, _)| *e)
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            best < 1e-3 * f1_err,
+            "residual boost failed: {} -> {}",
+            f1_err,
+            best
         );
     }
 }

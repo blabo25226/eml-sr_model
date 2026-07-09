@@ -165,6 +165,10 @@ pub enum Feature {
     Ln(usize),
     /// sigmoid(x_i) = 1/(1+e^{-x_i})
     Sigmoid(usize),
+    /// tanh(x_i) — saturating factor with an OLS-fitted amplitude
+    TanhVar(usize),
+    /// sigmoid(x_i - x_j) — pairwise gate factor (e.g. z * sigmoid(x - y))
+    SigmoidDiff(usize, usize),
     /// (x_i - x_j)^2
     DiffSq(usize, usize),
     /// |x_i - x_j|
@@ -192,8 +196,10 @@ impl Feature {
             | Feature::Sin2x(i)
             | Feature::Cos2x(i)
             | Feature::Ln(i)
-            | Feature::Sigmoid(i) => vec![i],
-            Feature::DiffSq(i, j)
+            | Feature::Sigmoid(i)
+            | Feature::TanhVar(i) => vec![i],
+            Feature::SigmoidDiff(i, j)
+            | Feature::DiffSq(i, j)
             | Feature::AbsDiff(i, j)
             | Feature::CosDiff(i, j)
             | Feature::CosProd(i, j)
@@ -213,6 +219,8 @@ impl Feature {
             Feature::Cos2x(i) => (2.0 * row[i]).cos(),
             Feature::Ln(i) => row[i].ln(),
             Feature::Sigmoid(i) => 1.0 / (1.0 + (-row[i]).exp()),
+            Feature::TanhVar(i) => row[i].tanh(),
+            Feature::SigmoidDiff(i, j) => 1.0 / (1.0 + (row[j] - row[i]).exp()),
             Feature::DiffSq(i, j) => {
                 let d = row[i] - row[j];
                 d * d
@@ -236,6 +244,10 @@ impl Feature {
             Feature::Cos2x(i) => unary("Cos", binary("Times", num(2.0), var(i), reg), reg),
             Feature::Ln(i) => unary("Log", var(i), reg),
             Feature::Sigmoid(i) => unary("Sigmoid", var(i), reg),
+            Feature::TanhVar(i) => unary("Tanh", var(i), reg),
+            Feature::SigmoidDiff(i, j) => {
+                unary("Sigmoid", binary("Subtract", var(i), var(j), reg), reg)
+            }
             Feature::DiffSq(i, j) => {
                 unary("Square", binary("Subtract", var(i), var(j), reg), reg)
             }
