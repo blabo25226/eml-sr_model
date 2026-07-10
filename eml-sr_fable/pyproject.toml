@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "eml-sr-fable"
+version = "0.2.0"
+description = "EML symbolic regression (fable edition) with enhanced power operators and LM optimization"
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.8"
+
+[tool.maturin]
+features = ["python", "full-math"]
+module-name = "eml_sr_fable"
