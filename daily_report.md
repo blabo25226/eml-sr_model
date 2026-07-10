@@ -1,3 +1,22 @@
+## 2026/07/06
+
+### AI（エージェント）が行ったこと
+- **PySR Feynman ベンチマーク計画書**を作成し、ユーザー承諾を得た（ブランチ `20260706_create_model_PySR`）
+- `src/feynman_PySR.py` を実装（PySR 1.5.10、N_SAMPLES=750、niterations=100、maxsize=20、EML-SR と同一 RMSE 閾値）
+- `texts/PySR_feynman_report.py` を実装（Markdown レポート自動生成モジュール）
+- PySR API 修正: `determinism` → `deterministic`、`parallelism='serial'` を設定
+- **スモークテスト完了**（`--smoke`, 3式）: **3/3 回収**（I.12.1, I.12.5, I.14.3）、102秒
+- **全99式 本番ベンチマーク完了**（約154分）
+  - **結果:** 完全回収 **57式 (57.6%)**、部分回収 14式、合計 71式 (71.7%)、スキップ5式、失敗23式
+  - **first_AI 比:** delta_ok = **+48**（9→57）、lost: `I.26.2`, `I.30.5`
+  - **cursor 比:** delta_ok = **+44**（13→57）、lost: `I.26.2`, `I.30.5`
+  - 出力: `results/PySR_feynman_results.json`, `texts/PySR_feynman_report.md`, `results/feynman_pysr_full.log`
+
+### ユーザーが行ったこと
+- PySR Feynman ベンチマーク作業計画を承諾
+
+---
+
 ## 2026/07/10 (eml-sr_fable 解説書 manual_eml-sr_fable.md の作成)
 
 ### AI（エージェント・Claude Fable）が行ったこと

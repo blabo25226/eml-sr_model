@@ -1,0 +1,376 @@
+{
+  "total": 3,
+  "ok": 3,
+  "skipped": 0,
+  "failed": 0,
+  "partial": 0,
+  "total_elapsed_s": 101.6378014087677,
+  "comparison_first_AI": {
+    "baseline_ok_count": 3,
+    "delta_ok": 0,
+    "new_ok_ids": [],
+    "lost_ok_ids": []
+  },
+  "comparison_cursor": {
+    "baseline_ok_count": 3,
+    "delta_ok": 0,
+    "new_ok_ids": [],
+    "lost_ok_ids": []
+  },
+  "smoke_mode": true,
+  "settings": {
+    "N_SAMPLES": 750,
+    "NITERATIONS": 40,
+    "POPULATIONS": 15,
+    "POPULATION_SIZE": 33,
+    "MAXSIZE": 20,
+    "BINARY_OPERATORS": "+, -, *, /",
+    "UNARY_OPERATORS": "exp, log, sin, cos, tan, sqrt, abs",
+    "RMSE_THRESHOLD": 0.0001,
+    "RMSE_PARTIAL": 0.01,
+    "PYSR_VERSION": "1.5.10"
+  },
+  "results": [
+    {
+      "eq_id": "I.12.1",
+      "status": "ok",
+      "found_formula": "x0*x1",
+      "found_python": "PySRFunction(X=>x0*x1)",
+      "rmse": 0.0,
+      "complexity": 3,
+      "elapsed_s": 49.413044691085815,
+      "candidates": [
+        {
+          "formula": "8.827282",
+          "python": "PySRFunction(X=>8.82728200000000)",
+          "complexity": 1,
+          "rmse": 5.034371553692905,
+          "loss": 25.34489
+        },
+        {
+          "formula": "x0 * x1",
+          "python": "PySRFunction(X=>x0*x1)",
+          "complexity": 3,
+          "rmse": 0.0,
+          "loss": 2.8666137e-13
+        },
+        {
+          "formula": "((tan(x0) * -3.9066833e-11) + x1) * x0",
+          "python": "PySRFunction(X=>x0*(x1 + tan(x0)*(-3.9066833e-11)))",
+          "complexity": 8,
+          "rmse": 4.178885346173698e-09,
+          "loss": 2.8658556e-13
+        },
+        {
+          "formula": "(x0 - (1.4104788e-10 / sin(-8.13377 * x1))) * x1",
+          "python": "PySRFunction(X=>x1*(x0 - 1.4104788e-10/sin(-8.13377*x1)))",
+          "complexity": 10,
+          "rmse": 9.842488111917236e-08,
+          "loss": 2.8173492e-13
+        },
+        {
+          "formula": "x1 * (x0 - ((-1.0752089e-10 - 1.4104788e-10) / (cos(x0) + -0.14833012)))",
+          "python": "PySRFunction(X=>x1*(x0 - (-1*1.4104788e-10 - 1.0752089e-10)/(cos(x0) - 0.14833012)))",
+          "complexity": 12,
+          "rmse": 1.2499897289309195e-07,
+          "loss": 2.769601e-13
+        },
+        {
+          "formula": "(x0 - ((5.561304e-10 / sin(abs(x0) * -8.13377)) - (2.411432e-10 / (cos(x0) + -0.14833012)))) * x1",
+          "python": "PySRFunction(X=>x1*(x0 - (5.561304e-10/sin(Abs(x0)*(-8.13377)) - 2.411432e-10/(cos(x0) - 0.14833012))))",
+          "complexity": 18,
+          "rmse": 1.251540149671019e-07,
+          "loss": 2.7665693e-13
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "8.827282",
+          "python": "PySRFunction(X=>8.82728200000000)",
+          "complexity": 1,
+          "rmse": 5.034371553692905,
+          "loss": 25.34489
+        },
+        {
+          "formula": "x0 * x1",
+          "python": "PySRFunction(X=>x0*x1)",
+          "complexity": 3,
+          "rmse": 0.0,
+          "loss": 2.8666137e-13
+        },
+        {
+          "formula": "((tan(x0) * -3.9066833e-11) + x1) * x0",
+          "python": "PySRFunction(X=>x0*(x1 + tan(x0)*(-3.9066833e-11)))",
+          "complexity": 8,
+          "rmse": 4.178885346173698e-09,
+          "loss": 2.8658556e-13
+        },
+        {
+          "formula": "(x0 - (1.4104788e-10 / sin(-8.13377 * x1))) * x1",
+          "python": "PySRFunction(X=>x1*(x0 - 1.4104788e-10/sin(-8.13377*x1)))",
+          "complexity": 10,
+          "rmse": 9.842488111917236e-08,
+          "loss": 2.8173492e-13
+        },
+        {
+          "formula": "x1 * (x0 - ((-1.0752089e-10 - 1.4104788e-10) / (cos(x0) + -0.14833012)))",
+          "python": "PySRFunction(X=>x1*(x0 - (-1*1.4104788e-10 - 1.0752089e-10)/(cos(x0) - 0.14833012)))",
+          "complexity": 12,
+          "rmse": 1.2499897289309195e-07,
+          "loss": 2.769601e-13
+        },
+        {
+          "formula": "(x0 - ((5.561304e-10 / sin(abs(x0) * -8.13377)) - (2.411432e-10 / (cos(x0) + -0.14833012)))) * x1",
+          "python": "PySRFunction(X=>x1*(x0 - (5.561304e-10/sin(Abs(x0)*(-8.13377)) - 2.411432e-10/(cos(x0) - 0.14833012))))",
+          "complexity": 18,
+          "rmse": 1.251540149671019e-07,
+          "loss": 2.7665693e-13
+        }
+      ],
+      "index": 1,
+      "csv_index": 8,
+      "n_vars": 2,
+      "var_names": [
+        "mu",
+        "Nn"
+      ]
+    },
+    {
+      "eq_id": "I.12.5",
+      "status": "ok",
+      "found_formula": "x0*x1",
+      "found_python": "PySRFunction(X=>x0*x1)",
+      "rmse": 0.0,
+      "complexity": 3,
+      "elapsed_s": 26.9789137840271,
+      "candidates": [
+        {
+          "formula": "8.750227",
+          "python": "PySRFunction(X=>8.75022700000000)",
+          "complexity": 1,
+          "rmse": 5.000593194343489,
+          "loss": 25.005926
+        },
+        {
+          "formula": "x1 * x0",
+          "python": "PySRFunction(X=>x0*x1)",
+          "complexity": 3,
+          "rmse": 0.0,
+          "loss": 3.062534e-13
+        },
+        {
+          "formula": "x1 * (x0 + (x1 * 1.22305135e-8))",
+          "python": "PySRFunction(X=>x1*(x0 + x1*1.22305135e-8))",
+          "complexity": 7,
+          "rmse": 1.4874559093664265e-07,
+          "loss": 3.0595023e-13
+        },
+        {
+          "formula": "x0 * (x1 + (6.690646e-10 / sin(x1)))",
+          "python": "PySRFunction(X=>x0*(x1 + 6.690646e-10/sin(x1)))",
+          "complexity": 8,
+          "rmse": 2.8069082219885433e-08,
+          "loss": 3.0504074e-13
+        },
+        {
+          "formula": "x0 * (x1 - (1.0138429e-9 / (x0 - x1)))",
+          "python": "PySRFunction(X=>x0*(x1 - 1.0138429e-9/(x0 - x1)))",
+          "complexity": 9,
+          "rmse": 6.811492397633641e-08,
+          "loss": 3.0231224e-13
+        },
+        {
+          "formula": "x1 * (x0 + (x0 * (tan(x0) * -7.665985e-10)))",
+          "python": "PySRFunction(X=>x1*(x0*tan(x0)*(-7.665985e-10) + x0))",
+          "complexity": 10,
+          "rmse": 9.56711088132013e-08,
+          "loss": 2.982195e-13
+        },
+        {
+          "formula": "(x1 * x0) + (tan(x0) * ((x0 * x1) * -7.665985e-10))",
+          "python": "PySRFunction(X=>tan(x0)*x0*x1*(-7.665985e-10) + x0*x1)",
+          "complexity": 12,
+          "rmse": 9.567110883576886e-08,
+          "loss": 2.9691213e-13
+        },
+        {
+          "formula": "(x1 * x0) + (((((x1 * x1) * x0) - x0) * 2.5985936e-10) / cos(x0))",
+          "python": "PySRFunction(X=>x0*x1 + (x0*x1*x1 - x0)*2.5985936e-10/cos(x0))",
+          "complexity": 16,
+          "rmse": 1.005203531396392e-07,
+          "loss": 2.9594578e-13
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "8.750227",
+          "python": "PySRFunction(X=>8.75022700000000)",
+          "complexity": 1,
+          "rmse": 5.000593194343489,
+          "loss": 25.005926
+        },
+        {
+          "formula": "x1 * x0",
+          "python": "PySRFunction(X=>x0*x1)",
+          "complexity": 3,
+          "rmse": 0.0,
+          "loss": 3.062534e-13
+        },
+        {
+          "formula": "x1 * (x0 + (x1 * 1.22305135e-8))",
+          "python": "PySRFunction(X=>x1*(x0 + x1*1.22305135e-8))",
+          "complexity": 7,
+          "rmse": 1.4874559093664265e-07,
+          "loss": 3.0595023e-13
+        },
+        {
+          "formula": "x0 * (x1 + (6.690646e-10 / sin(x1)))",
+          "python": "PySRFunction(X=>x0*(x1 + 6.690646e-10/sin(x1)))",
+          "complexity": 8,
+          "rmse": 2.8069082219885433e-08,
+          "loss": 3.0504074e-13
+        },
+        {
+          "formula": "x0 * (x1 - (1.0138429e-9 / (x0 - x1)))",
+          "python": "PySRFunction(X=>x0*(x1 - 1.0138429e-9/(x0 - x1)))",
+          "complexity": 9,
+          "rmse": 6.811492397633641e-08,
+          "loss": 3.0231224e-13
+        },
+        {
+          "formula": "x1 * (x0 + (x0 * (tan(x0) * -7.665985e-10)))",
+          "python": "PySRFunction(X=>x1*(x0*tan(x0)*(-7.665985e-10) + x0))",
+          "complexity": 10,
+          "rmse": 9.56711088132013e-08,
+          "loss": 2.982195e-13
+        },
+        {
+          "formula": "(x1 * x0) + (tan(x0) * ((x0 * x1) * -7.665985e-10))",
+          "python": "PySRFunction(X=>tan(x0)*x0*x1*(-7.665985e-10) + x0*x1)",
+          "complexity": 12,
+          "rmse": 9.567110883576886e-08,
+          "loss": 2.9691213e-13
+        },
+        {
+          "formula": "(x1 * x0) + (((((x1 * x1) * x0) - x0) * 2.5985936e-10) / cos(x0))",
+          "python": "PySRFunction(X=>x0*x1 + (x0*x1*x1 - x0)*2.5985936e-10/cos(x0))",
+          "complexity": 16,
+          "rmse": 1.005203531396392e-07,
+          "loss": 2.9594578e-13
+        }
+      ],
+      "index": 2,
+      "csv_index": 11,
+      "n_vars": 2,
+      "var_names": [
+        "q2",
+        "Ef"
+      ]
+    },
+    {
+      "eq_id": "I.14.3",
+      "status": "ok",
+      "found_formula": "x0*x1*x2",
+      "found_python": "PySRFunction(X=>x0*x1*x2)",
+      "rmse": 0.0,
+      "complexity": 5,
+      "elapsed_s": 25.057361841201782,
+      "candidates": [
+        {
+          "formula": "27.322876",
+          "python": "PySRFunction(X=>27.3228760000000)",
+          "complexity": 1,
+          "rmse": 18.841759244475732,
+          "loss": 355.01184
+        },
+        {
+          "formula": "x0 / 0.11114037",
+          "python": "PySRFunction(X=>x0/0.11114037)",
+          "complexity": 3,
+          "rmse": 15.671916890795439,
+          "loss": 245.60893
+        },
+        {
+          "formula": "(x2 * x1) * x0",
+          "python": "PySRFunction(X=>x0*x1*x2)",
+          "complexity": 5,
+          "rmse": 0.0,
+          "loss": 4.051799e-12
+        },
+        {
+          "formula": "x0 * (x2 * ((x0 * -1.2062052e-8) + x1))",
+          "python": "PySRFunction(X=>x0*x2*(x0*(-1.2062052e-8) + x1))",
+          "complexity": 9,
+          "rmse": 5.022193540171525e-07,
+          "loss": 4.0457355e-12
+        },
+        {
+          "formula": "(((tan(x1) * 1.5321392e-9) + x2) * x1) * x0",
+          "python": "PySRFunction(X=>x0*x1*(x2 + tan(x1)*1.5321392e-9))",
+          "complexity": 10,
+          "rmse": 4.6905330930507514e-07,
+          "loss": 3.945388e-12
+        },
+        {
+          "formula": "abs(abs(x0 * abs(x1 * (((tan(x1) * sqrt(x1)) * 6.522072e-10) + abs(x2)))))",
+          "python": "PySRFunction(X=>Abs(x0*Abs(x1*(6.522072e-10*sqrt(x1)*tan(x1) + Abs(x2)))))",
+          "complexity": 17,
+          "rmse": 4.121428140183509e-07,
+          "loss": 3.9420533e-12
+        }
+      ],
+      "all_candidates": [
+        {
+          "formula": "27.322876",
+          "python": "PySRFunction(X=>27.3228760000000)",
+          "complexity": 1,
+          "rmse": 18.841759244475732,
+          "loss": 355.01184
+        },
+        {
+          "formula": "x0 / 0.11114037",
+          "python": "PySRFunction(X=>x0/0.11114037)",
+          "complexity": 3,
+          "rmse": 15.671916890795439,
+          "loss": 245.60893
+        },
+        {
+          "formula": "(x2 * x1) * x0",
+          "python": "PySRFunction(X=>x0*x1*x2)",
+          "complexity": 5,
+          "rmse": 0.0,
+          "loss": 4.051799e-12
+        },
+        {
+          "formula": "x0 * (x2 * ((x0 * -1.2062052e-8) + x1))",
+          "python": "PySRFunction(X=>x0*x2*(x0*(-1.2062052e-8) + x1))",
+          "complexity": 9,
+          "rmse": 5.022193540171525e-07,
+          "loss": 4.0457355e-12
+        },
+        {
+          "formula": "(((tan(x1) * 1.5321392e-9) + x2) * x1) * x0",
+          "python": "PySRFunction(X=>x0*x1*(x2 + tan(x1)*1.5321392e-9))",
+          "complexity": 10,
+          "rmse": 4.6905330930507514e-07,
+          "loss": 3.945388e-12
+        },
+        {
+          "formula": "abs(abs(x0 * abs(x1 * (((tan(x1) * sqrt(x1)) * 6.522072e-10) + abs(x2)))))",
+          "python": "PySRFunction(X=>Abs(x0*Abs(x1*(6.522072e-10*sqrt(x1)*tan(x1) + Abs(x2)))))",
+          "complexity": 17,
+          "rmse": 4.121428140183509e-07,
+          "loss": 3.9420533e-12
+        }
+      ],
+      "index": 3,
+      "csv_index": 15,
+      "n_vars": 3,
+      "var_names": [
+        "m",
+        "g",
+        "z"
+      ]
+    }
+  ]
+}
