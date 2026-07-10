@@ -90,6 +90,17 @@
 
 ---
 
+## 2026/07/10 (eml-sr_fable v5 ドキュメント更新)
+
+### AI（エージェント）が行ったこと
+- `manual_eml-sr_fable.md` (v5) に基づき `eml-sr_fable/README.md` を本格的な日本語 README に更新（特徴・セットアップ・API・ベンチ抜粋）
+- `eml-sr_fable/example_python.py` を v5 API（`eml_sr_fable`、`rational_stage`、節約的タイブレーク、`eval`/`eval_batch`）に合わせて全面改修し動作確認
+
+### ユーザーが行ったこと
+- v5 進化に合わせた README / example_python の編集を依頼
+
+---
+
 ## 2026/07/07 (test2 別PC実行手順書)
 
 ### AI（エージェント）が行ったこと

@@ -1,72 +1,124 @@
-import eml_sr_model_cursor as eml_sr
+"""
+eml-sr_fable Python インターフェースのデモ (v5)
+
+ビルド:
+  cd eml-sr_fable
+  maturin develop --release --features python,full-math
+
+実行:
+  python example_python.py
+"""
+
 import numpy as np
+import eml_sr_fable
+
+
+def rmse(y_true, y_pred):
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    if not np.all(np.isfinite(y_pred)):
+        return float("inf")
+    return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+
+
+def pick_conservative(candidates, X, y, band_ratio=1.05):
+    """誤差が最良の band_ratio 倍以内で、複雑度が最小の候補を選ぶ (ベンチと同一方針)。"""
+    scored = []
+    for c in candidates:
+        preds = np.asarray(c.predict(X.tolist()), dtype=float)
+        scored.append((c, rmse(y, preds)))
+    finite = [(c, r) for c, r in scored if np.isfinite(r)]
+    if not finite:
+        raise RuntimeError("no finite candidates")
+    best_rmse = min(r for _, r in finite)
+    band = [(c, r) for c, r in finite if r <= best_rmse * band_ratio]
+    return min(band, key=lambda cr: (cr[0].complexity, cr[1]))[0]
+
 
 def main():
-    print("===========================================================")
-    print("      EML-SR PYTHON INTERFACE DEMO                         ")
-    print("===========================================================")
+    print("=" * 63)
+    print("  eml-sr_fable Python Interface Demo (v5)")
+    print("=" * 63)
 
-    # 1. Initialize the searcher
-    # max_complexity=10 is a good starting point for discovery
-    # beam_width=200 ensures fast search with low memory usage
-    searcher = eml_sr.Searcher(max_complexity=10, beam_width=500)
+    # 1. Searcher 初期化 (Feynman 1.test 相当の高速設定)
+    searcher = eml_sr_fable.Searcher(
+        max_complexity=6,
+        complexity_penalty=0.08,
+        beam_width=1000,
+        time_budget_s=60.0,
+        subsample_size=256,
+        early_exit_threshold=1e-9,
+        refinement_top_k=8,
+        snap_constants=True,
+        powerlaw_stage=True,
+        ratio_search=True,
+        rational_stage=True,
+        affine_scaling=True,
+        max_boost_terms=6,
+        verbose=False,
+    )
 
-    # 2. Example: Identify a constant
-    print("\n[Task] Identifying constant: 3.1415926535...")
-    result = searcher.recognize_constant(3.141592653589793)
-    print(f"      Formula:    {result.formula}")
-    print(f"      LaTeX:      {result.to_latex()}")
-    print(f"      Complexity: {result.complexity}")
+    # 2. 定数の閉形式同定
+    print("\n[1] recognize_constant(π)")
+    r = searcher.recognize_constant(np.pi)
+    print(f"    formula:    {r.formula}")
+    print(f"    to_python:  {r.to_python()}")
+    print(f"    to_latex:   {r.to_latex()}")
+    print(f"    complexity: {r.complexity}")
 
-    # 3. Example: Univariate function f(x) = sin(x) + 1
-    print("\n[Task] Discovering f(x) = sin(x) + 1")
-    xs = np.linspace(0, 2*np.pi, 20)
+    # 3. 1 変数: f(x) = sin(x) + 1
+    print("\n[2] find_function: f(x) = sin(x) + 1")
+    xs = np.linspace(0.1, 2 * np.pi, 80)
     ys = np.sin(xs) + 1.0
+    r = searcher.find_function(xs, ys)
+    print(f"    formula:    {r.formula}")
+    print(f"    to_python:  {r.to_python()}")
+    print(f"    RMSE:       {rmse(ys, [r.eval(float(x)) for x in xs]):.3e}")
+    print(f"    complexity: {r.complexity}")
 
-    result = searcher.find_function(xs, ys)
-    print(f"      Found:      {result.formula}")
-    print(f"      Python:     {result.to_python()}")
-    print(f"      MSE Error:  {result.error:.2e}")
+    # 4. 多変数 + Pareto front + 節約的タイブレーク
+    print("\n[3] find_candidates: y = x0^2 + 3*x1 (節約的タイブレーク)")
+    rng = np.random.default_rng(0)
+    X = rng.uniform(0.5, 3.0, size=(500, 2))
+    y = X[:, 0] ** 2 + 3.0 * X[:, 1]
 
-    # 4. Example: Scikit-Learn style API (fit & predict)
-    print("\n[Task] Discovering f(x0, x1) = x0 * x1 + 0.5 using .fit() and .predict()")
-    inputs = [
-        [1.0, 2.0],
-        [2.0, 3.0],
-        [3.0, 4.0],
-        [0.5, 0.5]
-    ]
-    targets = [v[0] * v[1] + 0.5 for v in inputs]
+    candidates = searcher.find_candidates(X.tolist(), y.tolist())
+    best = pick_conservative(candidates, X, y)
+    preds = np.asarray(best.predict(X.tolist()), dtype=float)
+    print(f"    pareto size: {len(candidates)}")
+    print(f"    best formula: {best.formula}")
+    print(f"    best python:  {best.to_python()}")
+    print(f"    RMSE:         {rmse(y, preds):.3e}")
+    print(f"    complexity:   {best.complexity}")
 
-    result = searcher.fit(inputs, targets)
-    print(f"      Found:      {result.formula}")
-    
-    predictions = result.predict(inputs)
-    print(f"      Predictions: {predictions}")
+    # 5. sklearn 風 API
+    print("\n[4] fit / predict: f(x0, x1) = x0 * x1 + 0.5")
+    inputs = np.array([[1.0, 2.0], [2.0, 3.0], [3.0, 4.0], [0.5, 0.5]])
+    targets = inputs[:, 0] * inputs[:, 1] + 0.5
+    r = searcher.fit(inputs, targets)
+    print(f"    formula:     {r.formula}")
+    print(f"    predictions: {r.predict(inputs)}")
 
-    # 5. Example: Pareto-Front (Multiple candidates)
-    print("\n[Task] Exploring the Pareto-Front for f(x) = sin(x) + 1")
-    # find_candidates expects a 2D array, so we reshape xs to (N, 1)
-    xs_2d = xs.reshape(-1, 1)
-    candidates = searcher.find_candidates(xs_2d, ys)
-    print(f"      Found {len(candidates)} candidates on the Pareto Front:")
-    for i, c in enumerate(candidates):
-        print(f"      [{i+1}] Error: {c.error:.2e} | Complexity: {c.complexity:2} | Formula: {c.formula}")
+    # 6. EML 演算子の例: f(x) = exp(x) - ln(x + 5)
+    print("\n[5] EML challenge: f(x) = exp(x) - ln(x + 5)")
+    xs_eml = np.linspace(1.0, 10.0, 100)
+    ys_eml = np.exp(xs_eml) - np.log(xs_eml + 5.0)
+    r = searcher.find_function(xs_eml, ys_eml)
+    print(f"    formula:    {r.formula}")
+    print(f"    to_python:  {r.to_python()}")
+    print(f"    complexity: {r.complexity}")
 
-    # 6. The EML Challenge: Finding a complex law concisely
-    # Target: f(x) = exp(x) - ln(x + 5)
-    print("\n[Task] EML Challenge: Discovering f(x) = e^x - ln(x + 5)")
-    xs_challenge = np.linspace(1, 10, 20)
-    ys_challenge = np.exp(xs_challenge) - np.log(xs_challenge + 5.0)
-    
-    # EML should find this as EML(v0, v0 + 5) which is complexity 3
-    # Traditional ops would need Exp(v0) - Log(v0 + 5) which is complexity 5
-    result = searcher.find_function(xs_challenge, ys_challenge)
-    print(f"      Formula:    {result.formula}")
-    print(f"      Simplified: {result.to_python()}")
-    print(f"      Complexity: {result.complexity} (Standard ops would need 5+)")
+    # 7. eval_batch
+    print("\n[6] eval_batch on held-out points")
+    X_test = rng.uniform(0.5, 3.0, size=(20, 2))
+    y_test = X_test[:, 0] ** 2 + 3.0 * X_test[:, 1]
+    y_hat = np.asarray(best.eval_batch(X_test.tolist()), dtype=float)
+    print(f"    hold-out RMSE: {rmse(y_test, y_hat):.3e}")
 
-    print("\n===========================================================")
+    print("\n" + "=" * 63)
+    print("  Done. See manual_eml-sr_fable.md for full API and benchmarks.")
+    print("=" * 63)
+
 
 if __name__ == "__main__":
     main()
