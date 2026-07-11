@@ -222,8 +222,10 @@ pub(crate) fn run_bfs_front(
             all_candidates.truncate(config.max_pool_size);
         }
 
-        // Score every admitted candidate on the subsample.
-        let scored: Vec<(Expression, Option<(f64, f64)>, f64)> = all_candidates
+        // Score every admitted candidate on the subsample. `rank_error` is
+        // the survival-ranking error (with optional one-step lookahead);
+        // the Pareto front always stores the true (non-lookahead) error.
+        let scored: Vec<(Expression, Option<(f64, f64)>, f64, f64)> = all_candidates
             .into_par_iter()
             .filter_map(|mut expr| {
                 let mut preds = predict(&expr, &sub_inputs, registry)?;
@@ -260,40 +262,64 @@ pub(crate) fn run_bfs_front(
                 } else {
                     None
                 };
-                Some((expr, affine, best_error))
+                // One-step lookahead (ranking only): a subexpression of the
+                // true formula often fits y poorly on its own but perfectly
+                // after one more wrapper — without this it is pruned before
+                // it can ever be wrapped.
+                let rank_error = if config.lookahead_scoring {
+                    best_error.min(lookahead_error(&preds, &sub_targets))
+                } else {
+                    best_error
+                };
+                Some((expr, affine, best_error, rank_error))
             })
             .collect();
 
-        for (expr, affine, error) in &scored {
+        for (expr, affine, error, _) in &scored {
             update_pareto(&front, expr, *error, *affine);
         }
 
         // Beam selection with affine-class diversity.
         let mut ranked: Vec<(Expression, f64)> = scored
             .into_iter()
-            .map(|(expr, _aff, err)| {
-                let score = err * (1.0 + expr.complexity() as f64 * config.complexity_penalty);
+            .map(|(expr, _aff, _err, rank_err)| {
+                let score =
+                    rank_err * (1.0 + expr.complexity() as f64 * config.complexity_penalty);
                 (expr, score)
             })
             .collect();
         ranked.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
         let mut selected: Vec<Expression> = Vec::with_capacity(config.beam_width.min(ranked.len()));
-        if config.affine_class_cap > 0 && config.affine_scaling {
+        if (config.affine_class_cap > 0 && config.affine_scaling) || config.behavior_cap > 0 {
             let mut class_counts: HashMap<Vec<i64>, usize> = HashMap::new();
+            let mut behavior_counts: HashMap<Vec<i8>, usize> = HashMap::new();
             for (expr, _) in ranked {
                 if selected.len() >= config.beam_width {
                     break;
                 }
-                let key = match predict(&expr, &sub_inputs, registry) {
-                    Some(p) => affine_class_key(&p),
+                let preds = match predict(&expr, &sub_inputs, registry) {
+                    Some(p) => p,
                     None => continue,
                 };
-                let count = class_counts.entry(key).or_insert(0);
-                if *count >= config.affine_class_cap {
-                    continue;
+                if config.affine_class_cap > 0 && config.affine_scaling {
+                    let key = affine_class_key(&preds);
+                    let count = class_counts.entry(key).or_insert(0);
+                    if *count >= config.affine_class_cap {
+                        continue;
+                    }
+                    *count += 1;
                 }
-                *count += 1;
+                // Coarse behavioral bucket: spreads the beam over genuinely
+                // different behaviors instead of many variants of one shape.
+                if config.behavior_cap > 0 {
+                    let key = behavior_key(&preds);
+                    let count = behavior_counts.entry(key).or_insert(0);
+                    if *count >= config.behavior_cap {
+                        continue;
+                    }
+                    *count += 1;
+                }
                 selected.push(expr);
             }
         } else {
@@ -421,6 +447,67 @@ fn affine_fit(preds: &[f64], targets: &[f64]) -> (Option<(f64, f64)>, f64) {
         acc += d * d;
     }
     ((Some((a, b))), (acc / n).sqrt())
+}
+
+/// One-step lookahead ranking error: the best affine fit over wrapped
+/// predictions g(f), for wrappers that the pure-EML grammar can realize in
+/// one more construction step (exp(u) = EML(u, 1), ln u = 1 - EML(0, u),
+/// 1/u = EML(EML(0, u) - 1, 1)).
+pub(crate) fn lookahead_error(preds: &[f64], targets: &[f64]) -> f64 {
+    let mut best = f64::INFINITY;
+    let mut buf = Vec::with_capacity(preds.len());
+
+    // exp(f): guard against overflow.
+    if preds.iter().all(|&p| p.abs() < 50.0) {
+        buf.clear();
+        buf.extend(preds.iter().map(|&p| p.exp()));
+        best = best.min(affine_fit(&buf, targets).1);
+    }
+    // ln|f|: needs values bounded away from zero.
+    let p_scale = preds.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+    if p_scale > 0.0 && preds.iter().all(|&p| p.abs() > 1e-9 * p_scale) {
+        buf.clear();
+        buf.extend(preds.iter().map(|&p| p.abs().ln()));
+        best = best.min(affine_fit(&buf, targets).1);
+        // 1/f under the same guard.
+        buf.clear();
+        buf.extend(preds.iter().map(|&p| 1.0 / p));
+        best = best.min(affine_fit(&buf, targets).1);
+    }
+    best
+}
+
+/// Coarse behavioral signature of a prediction vector: the normalized
+/// (mean 0, norm 1, sign-canonical) predictions at 16 evenly spaced sample
+/// positions, quantized to steps of 0.25 standard units. Affine variants of
+/// one shape share a bucket; genuinely different shapes do not.
+pub(crate) fn behavior_key(preds: &[f64]) -> Vec<i8> {
+    let n = preds.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let nf = n as f64;
+    let mean = preds.iter().sum::<f64>() / nf;
+    let sd = (preds.iter().map(|p| (p - mean) * (p - mean)).sum::<f64>() / nf).sqrt();
+    let scale = preds.iter().fold(0.0f64, |m, v| m.max(v.abs())).max(1.0);
+    if sd <= 1e-12 * scale {
+        return Vec::new(); // all near-constant behaviors share one bucket
+    }
+    let m = 16.min(n);
+    let mut flip = 0.0f64;
+    let mut key = Vec::with_capacity(m);
+    for j in 0..m {
+        let p = preds[j * n / m];
+        let mut w = (p - mean) / sd;
+        if flip == 0.0 && w.abs() > 1e-9 {
+            flip = if w < 0.0 { -1.0 } else { 1.0 };
+        }
+        if flip != 0.0 {
+            w *= flip;
+        }
+        key.push((w * 4.0).round().clamp(-32.0, 32.0) as i8);
+    }
+    key
 }
 
 /// Canonical key of the affine equivalence class of a prediction vector.

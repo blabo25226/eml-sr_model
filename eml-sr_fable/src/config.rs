@@ -129,6 +129,23 @@ pub struct SearchConfig {
     pub affine_class_cap: usize,
     /// Print per-level progress logs.
     pub verbose: bool,
+
+    // ---- pure-EML edition additions ----
+    /// Route the whole search through the pure-EML pipeline: the only
+    /// function primitive is EML(x,y) = e^x - ln(y), combined with the
+    /// arithmetic glue Plus/Times/Neg and tunable constants. None of the
+    /// closed-form stages (A/A2/C) is used.
+    pub pure_eml: bool,
+    /// One-step lookahead in beam survival ranking: a candidate `f` is
+    /// ranked by the best affine fit over wrappers g(f), g in
+    /// {id, exp, ln|.|, 1/u}. Ranking-only; reported errors are unchanged.
+    pub lookahead_scoring: bool,
+    /// Maximum beam entries per coarse behavioral bucket (quantized
+    /// normalized prediction signature). 0 = disabled.
+    pub behavior_cap: usize,
+    /// Enable the EML basis-boosting stage inside the pure-EML pipeline
+    /// (disable for ablation: beam-only pure search).
+    pub pure_basis_stage: bool,
 }
 
 impl Default for SearchConfig {
@@ -168,6 +185,10 @@ impl SearchConfig {
             affine_scaling: true,
             affine_class_cap: 3,
             verbose: true,
+            pure_eml: false,
+            lookahead_scoring: false,
+            behavior_cap: 0,
+            pure_basis_stage: true,
         }
     }
 

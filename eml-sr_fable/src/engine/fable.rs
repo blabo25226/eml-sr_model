@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Full-data RMSE of an assembled expression.
-fn expr_error(
+pub(crate) fn expr_error(
     expr: &Expression,
     inputs: &[Vec<f64>],
     ys: &[f64],
@@ -41,7 +41,7 @@ fn deadline_passed(deadline: Option<Instant>) -> bool {
 
 /// Rebuilds the canonical display string from the RPN nodes (used after
 /// parameter materialization, when the stored display would be stale).
-fn redisplay(expr: &Expression, reg: &OperatorRegistry) -> String {
+pub(crate) fn redisplay(expr: &Expression, reg: &OperatorRegistry) -> String {
     use crate::core::expression::Node;
     let mut stack: Vec<String> = Vec::with_capacity(expr.complexity());
     for node in &expr.nodes {
@@ -65,7 +65,7 @@ fn redisplay(expr: &Expression, reg: &OperatorRegistry) -> String {
 /// `Param` with node-order ids, so LM can re-optimize all constants of a
 /// closed-form candidate against the raw target. Returns `None` when there
 /// is nothing to tune or when the parameter count would make LM too slow.
-fn literals_to_params(expr: &Expression) -> Option<Expression> {
+fn literals_to_params(expr: &Expression, max_params: usize) -> Option<Expression> {
     use crate::core::expression::Node;
     let mut nodes = expr.nodes.clone();
     let mut count: usize = 0;
@@ -85,7 +85,7 @@ fn literals_to_params(expr: &Expression) -> Option<Expression> {
             _ => {}
         }
     }
-    if count == 0 || count > 16 {
+    if count == 0 || count > max_params.min(200) {
         return None;
     }
     Some(Expression::new(
@@ -98,7 +98,7 @@ fn literals_to_params(expr: &Expression) -> Option<Expression> {
 
 /// Materializes every `Param` back into a numeric literal and regenerates
 /// the display string.
-fn params_to_literals(expr: &Expression, reg: &OperatorRegistry) -> Expression {
+pub(crate) fn params_to_literals(expr: &Expression, reg: &OperatorRegistry) -> Expression {
     use crate::core::expression::Node;
     let nodes: Vec<Node> = expr
         .nodes
@@ -146,7 +146,10 @@ fn polish_pool(
         if !err.is_finite() {
             continue;
         }
-        let pexpr = match literals_to_params(expr) {
+        // Pure-EML models carry many structural constants (glue 0/1 nodes,
+        // argument coefficients), so they need a larger tunable budget.
+        let max_params = if config.pure_eml { 48 } else { 16 };
+        let pexpr = match literals_to_params(expr, max_params) {
             Some(p) => p,
             None => continue,
         };
@@ -226,7 +229,7 @@ fn val_pareto_filter(
 
 /// Final pool handling shared by every pipeline exit: raw-space LM polish of
 /// the leading candidates, validation-ranked filtering, Pareto merge.
-fn finalize_pool(
+pub(crate) fn finalize_pool(
     mut pool: Vec<(f64, Expression)>,
     inputs: &[Vec<f64>],
     ys: &[f64],
@@ -261,6 +264,10 @@ pub fn run_fable(
         return Err(EmlError::invalid(
             "Inputs and target vector must be non-empty and equal length.",
         ));
+    }
+
+    if config.pure_eml {
+        return crate::engine::pure_eml::run_pure_eml(inputs, ys, config);
     }
 
     let registry = Arc::new(OperatorRegistry::with_builtins());
