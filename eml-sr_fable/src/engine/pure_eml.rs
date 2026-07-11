@@ -118,11 +118,16 @@ fn eml_ln(v: Expression, reg: &OperatorRegistry) -> Expression {
 }
 
 /// Log-augmented affine argument with tunable parameters:
-/// P(x) = p0 + sum_{i in xs} p_i x_i + sum_{j in lns} q_j ln(x_j).
-/// The ln factors are EML-composed so the tree stays inside the pure
-/// grammar. Parameter initial values come from the caller.
+/// P(x) = p0 + sum_{i in xs} p_i x_i + sum_{i in sqs} s_i x_i^2
+///        + sum_{j in lns} q_j ln(x_j).
+/// The ln factors are EML-composed and the squares are Times(x, x), so the
+/// tree stays inside the pure grammar. Keeping the structural variants
+/// separate (x-only / squares / ln-only) matters under noise: a pure
+/// monomial fitted with spurious x-linear terms never snaps back to the
+/// exact law.
 fn affine_arg(
     xs: &[usize],
+    sqs: &[usize],
     lns: &[usize],
     inits: &AffineInits,
     reg: &OperatorRegistry,
@@ -133,6 +138,15 @@ fn affine_arg(
             "Times",
             Expression::parameter_with(inits.x_coeffs.get(k).copied().unwrap_or(0.0)),
             build::var(i),
+            reg,
+        );
+        acc = build::binary("Plus", acc, term, reg);
+    }
+    for (k, &i) in sqs.iter().enumerate() {
+        let term = build::binary(
+            "Times",
+            Expression::parameter_with(inits.sq_coeffs.get(k).copied().unwrap_or(0.0)),
+            build::binary("Times", build::var(i), build::var(i), reg),
             reg,
         );
         acc = build::binary("Plus", acc, term, reg);
@@ -153,6 +167,7 @@ fn affine_arg(
 struct AffineInits {
     intercept: f64,
     x_coeffs: Vec<f64>,
+    sq_coeffs: Vec<f64>,
     ln_coeffs: Vec<f64>,
 }
 
@@ -167,10 +182,129 @@ enum Template {
     FullUnit,
 }
 
+/// Nested EML unit: c * e^{a0 + sum b_j ln x_j + a1 * M(x)} with
+/// M(x) = e^{sum c_i ln x_i} (a monomial, itself an EML composition).
+/// Covers the "monomial x exponential-of-a-monomial-ratio" family, e.g.
+/// n0 * exp(-m g x / (kb T)), which no affine argument can express.
+fn build_nested_exp_unit(
+    lns: &[usize],
+    scale_init: f64,
+    p_inits: &AffineInits,
+    a1_init: f64,
+    ln_inits: &[f64],
+    reg: &OperatorRegistry,
+) -> Expression {
+    let l_inits = AffineInits {
+        intercept: 0.0,
+        x_coeffs: Vec::new(),
+        sq_coeffs: Vec::new(),
+        ln_coeffs: ln_inits.to_vec(),
+    };
+    let monomial = build::binary(
+        "EML",
+        affine_arg(&[], &[], lns, &l_inits, reg),
+        build::num(1.0),
+        reg,
+    );
+    // a0 + sum b_j ln x_j (log-affine part, e.g. the ln n0 prefactor).
+    let base = affine_arg(&[], &[], lns, p_inits, reg);
+    let p2 = build::binary(
+        "Plus",
+        base,
+        build::binary("Times", Expression::parameter_with(a1_init), monomial, reg),
+        reg,
+    );
+    let core = build::binary("EML", p2, build::num(1.0), reg);
+    build::binary("Times", Expression::parameter_with(scale_init), core, reg)
+}
+
+/// Initialisation for the nested unit via a two-step double-log fit:
+/// 1. fit ln |r| ~ a0 + sum b_j ln x_j (the monomial prefactor);
+/// 2. on the detrended t2 = ln|r| - fit, with r_extra ~ e^{-M(x)}:
+///    s = max(t2) - t2 + eps ~ M(x) and ln s ~ sum c_i ln x_i is linear.
+fn nested_exp_inits(
+    inputs: &[Vec<f64>],
+    residual: &[f64],
+    lns: &[usize],
+) -> Option<(f64, AffineInits, f64, Vec<f64>)> {
+    let rows: Vec<usize> = (0..residual.len())
+        .filter(|&i| residual[i].abs() > 0.0)
+        .collect();
+    if rows.len() < 2 * lns.len() + 6 {
+        return None;
+    }
+    let sign = if rows.iter().map(|&i| residual[i].signum()).sum::<f64>() >= 0.0 {
+        1.0
+    } else {
+        -1.0
+    };
+    let ln_design: Vec<Vec<f64>> = rows
+        .iter()
+        .map(|&i| {
+            let mut row = Vec::with_capacity(1 + lns.len());
+            row.push(1.0);
+            for &v in lns {
+                row.push(inputs[i][v].max(1e-300).ln());
+            }
+            row
+        })
+        .collect();
+    let t: Vec<f64> = rows
+        .iter()
+        .map(|&i| residual[i].abs().max(1e-300).ln())
+        .collect();
+
+    // Step 1: monomial prefactor.
+    let pre = lstsq(&ln_design, &t)?;
+    if !pre.iter().all(|v| v.is_finite()) {
+        return None;
+    }
+    let p_inits = AffineInits {
+        intercept: pre[0],
+        x_coeffs: Vec::new(),
+        sq_coeffs: Vec::new(),
+        ln_coeffs: pre[1..].to_vec(),
+    };
+
+    // Step 2: exponent monomial on the detrended log-residual.
+    let t2: Vec<f64> = t
+        .iter()
+        .zip(&ln_design)
+        .map(|(&ti, row)| {
+            ti - pre.iter().zip(row).map(|(c, x)| c * x).sum::<f64>()
+        })
+        .collect();
+    let t2_max = t2.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let spread = t2_max - t2.iter().cloned().fold(f64::INFINITY, f64::min);
+    if !(spread.is_finite()) || spread < 0.5 {
+        return None; // no exponential component left worth modelling
+    }
+    let s_eps = 1e-3 * spread;
+    let target: Vec<f64> = t2
+        .iter()
+        .map(|&ti| (t2_max - ti + s_eps).max(1e-300).ln())
+        .collect();
+    let sol = lstsq(&ln_design, &target)?;
+    if !sol.iter().all(|v| v.is_finite()) {
+        return None;
+    }
+    // M's fitted intercept becomes a global factor absorbed into a1.
+    let a1 = -sol[0].exp();
+    if !a1.is_finite() {
+        return None;
+    }
+    let mut p_adj = p_inits;
+    p_adj.intercept += t2_max;
+    Some((sign, p_adj, a1, sol[1..].to_vec()))
+}
+
 /// Builds one parametric unit (leading scale included as a parameter).
+/// `xs`/`sqs`/`lns` select which structural pieces appear in the first
+/// argument P.
 fn build_unit(
     t: Template,
     xs: &[usize],
+    sqs: &[usize],
     lns: &[usize],
     scale_init: f64,
     p_inits: &AffineInits,
@@ -178,8 +312,8 @@ fn build_unit(
     reg: &OperatorRegistry,
 ) -> Expression {
     let one_plus_prod = |reg: &OperatorRegistry| {
-        let a = affine_arg(xs, &[], q_inits, reg);
-        let b = affine_arg(xs, &[], q_inits, reg);
+        let a = affine_arg(xs, &[], &[], q_inits, reg);
+        let b = affine_arg(xs, &[], &[], q_inits, reg);
         build::binary(
             "Plus",
             build::num(1.0),
@@ -190,14 +324,14 @@ fn build_unit(
     let core = match t {
         Template::ExpUnit => build::binary(
             "EML",
-            affine_arg(xs, lns, p_inits, reg),
+            affine_arg(xs, sqs, lns, p_inits, reg),
             build::num(1.0),
             reg,
         ),
         Template::LogUnit => build::binary("EML", build::num(0.0), one_plus_prod(reg), reg),
         Template::FullUnit => build::binary(
             "EML",
-            affine_arg(xs, lns, p_inits, reg),
+            affine_arg(xs, sqs, lns, p_inits, reg),
             one_plus_prod(reg),
             reg,
         ),
@@ -261,6 +395,7 @@ fn exp_unit_inits(
     inputs: &[Vec<f64>],
     residual: &[f64],
     xs: &[usize],
+    sqs: &[usize],
     lns: &[usize],
 ) -> (f64, AffineInits) {
     let r_scale = residual.iter().fold(0.0f64, |m, v| m.max(v.abs()));
@@ -275,16 +410,20 @@ fn exp_unit_inits(
     let mut inits = AffineInits {
         intercept: 0.0,
         x_coeffs: vec![0.0; xs.len()],
+        sq_coeffs: vec![0.0; sqs.len()],
         ln_coeffs: vec![0.0; lns.len()],
     };
-    if rows.len() >= xs.len() + lns.len() + 2 {
+    if rows.len() >= xs.len() + sqs.len() + lns.len() + 2 {
         let design: Vec<Vec<f64>> = rows
             .iter()
             .map(|&i| {
-                let mut row = Vec::with_capacity(1 + xs.len() + lns.len());
+                let mut row = Vec::with_capacity(1 + xs.len() + sqs.len() + lns.len());
                 row.push(1.0);
                 for &v in xs {
                     row.push(inputs[i][v]);
+                }
+                for &v in sqs {
+                    row.push(inputs[i][v] * inputs[i][v]);
                 }
                 for &v in lns {
                     row.push(inputs[i][v].max(1e-300).ln());
@@ -297,7 +436,8 @@ fn exp_unit_inits(
             if sol.iter().all(|v| v.is_finite()) {
                 inits.intercept = sol[0];
                 inits.x_coeffs = sol[1..1 + xs.len()].to_vec();
-                inits.ln_coeffs = sol[1 + xs.len()..].to_vec();
+                inits.sq_coeffs = sol[1 + xs.len()..1 + xs.len() + sqs.len()].to_vec();
+                inits.ln_coeffs = sol[1 + xs.len() + sqs.len()..].to_vec();
             }
         }
     }
@@ -411,7 +551,7 @@ pub(crate) fn eml_basis_boost(
             break;
         }
         // Variable subsets sized to keep the LM parameter count modest.
-        let vars = select_variables(inputs, &residual, 5);
+        let vars = select_variables(inputs, &residual, 6);
         if vars.is_empty() {
             break;
         }
@@ -422,8 +562,11 @@ pub(crate) fn eml_basis_boost(
             .collect();
         let sub_residual: Vec<f64> = sub_rows.iter().map(|&i| residual[i]).collect();
 
-        // Candidate templates with data-driven initialisation.
-        let (sign, exp_inits) = exp_unit_inits(inputs, &residual, &vars, &lns);
+        // Candidate templates, each a distinct structural hypothesis with
+        // its own data-driven initialisation. Keeping the variants separate
+        // matters under noise: a pure monomial fitted through a mixed
+        // (x + ln x) argument keeps spurious linear terms that never snap
+        // away, leaving the coefficients just off the exact law.
         let r_std = std_dev(&residual).max(1e-30);
         let q_inits = AffineInits {
             intercept: 0.1,
@@ -439,26 +582,61 @@ pub(crate) fn eml_basis_boost(
                     }
                 })
                 .collect(),
+            sq_coeffs: Vec::new(),
             ln_coeffs: Vec::new(),
         };
-        let mut candidates = vec![
-            build_unit(Template::ExpUnit, &vars, &lns, sign, &exp_inits, &q_inits, reg),
-            build_unit(
-                Template::ExpUnit,
-                &vars,
-                &[],
-                sign,
-                &AffineInits {
-                    intercept: exp_inits.intercept,
-                    x_coeffs: exp_inits.x_coeffs.clone(),
-                    ln_coeffs: Vec::new(),
-                },
-                &q_inits,
-                reg,
-            ),
-            build_unit(Template::LogUnit, &vars, &[], r_std, &exp_inits, &q_inits, reg),
-            build_unit(Template::FullUnit, &vars, &lns, sign, &exp_inits, &q_inits, reg),
-        ];
+        let no_vars: [usize; 0] = [];
+        let mut candidates = Vec::new();
+        // Pure monomial: e^{sum b_i ln x_i} — the single most common physics
+        // shape; ln-only arguments let the b_i snap to clean integers.
+        if !lns.is_empty() {
+            let (sign, inits) = exp_unit_inits(inputs, &residual, &no_vars, &no_vars, &lns);
+            candidates.push(build_unit(
+                Template::ExpUnit, &no_vars, &no_vars, &lns, sign, &inits, &q_inits, reg,
+            ));
+        }
+        // Mixed monomial x exponential.
+        {
+            let (sign, inits) = exp_unit_inits(inputs, &residual, &vars, &no_vars, &lns);
+            candidates.push(build_unit(
+                Template::ExpUnit, &vars, &no_vars, &lns, sign, &inits, &q_inits, reg,
+            ));
+        }
+        // Exponential of an affine form (mixed-sign variables).
+        {
+            let (sign, inits) = exp_unit_inits(inputs, &residual, &vars, &no_vars, &no_vars);
+            candidates.push(build_unit(
+                Template::ExpUnit, &vars, &no_vars, &no_vars, sign, &inits, &q_inits, reg,
+            ));
+        }
+        // Gaussian class: e^{affine + quadratic} (e.g. exp(-x^2/2)).
+        {
+            let (sign, inits) = exp_unit_inits(inputs, &residual, &vars, &vars, &no_vars);
+            candidates.push(build_unit(
+                Template::ExpUnit, &vars, &vars, &no_vars, sign, &inits, &q_inits, reg,
+            ));
+        }
+        // Logarithmic and combined shapes.
+        {
+            let (sign, inits) = exp_unit_inits(inputs, &residual, &vars, &no_vars, &lns);
+            candidates.push(build_unit(
+                Template::LogUnit, &vars, &no_vars, &no_vars, r_std, &inits, &q_inits, reg,
+            ));
+            candidates.push(build_unit(
+                Template::FullUnit, &vars, &no_vars, &lns, sign, &inits, &q_inits, reg,
+            ));
+        }
+        // Monomial x exponential-of-a-monomial: e^{Σb·ln x + a1·Πx^c} — the
+        // n0*exp(-m g x/(kb T)) family; needs a nested EML in the exponent.
+        if lns.len() >= 2 {
+            if let Some((sign, p_inits, a1, ln_inits)) =
+                nested_exp_inits(inputs, &residual, &lns)
+            {
+                candidates.push(build_nested_exp_unit(
+                    &lns, sign, &p_inits, a1, &ln_inits, reg,
+                ));
+            }
+        }
         // Single-variable ExpUnits: the full-variable log-space fit often
         // locks onto a "compromise" monomial when the target is a sum of
         // structurally different terms; per-variable starts escape it
@@ -466,10 +644,12 @@ pub(crate) fn eml_basis_boost(
         for &v in &vars {
             let single = [v];
             let single_ln: Vec<usize> = if positive.contains(&v) { vec![v] } else { vec![] };
-            let (s_sign, s_inits) = exp_unit_inits(inputs, &residual, &single, &single_ln);
+            let (s_sign, s_inits) =
+                exp_unit_inits(inputs, &residual, &single, &no_vars, &single_ln);
             candidates.push(build_unit(
                 Template::ExpUnit,
                 &single,
+                &no_vars,
                 &single_ln,
                 s_sign,
                 &s_inits,
