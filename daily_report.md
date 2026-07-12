@@ -1,3 +1,26 @@
+## 2026/07/11 (eml-sr_fable v6: 純 EML モード — Stage A/C なしで EML の組み合わせだけ)
+
+### AI（エージェント・Claude Fable）が行ったこと
+- ユーザーの問い「ステージ A/C がメインで EML を組み合わせる原初の仕組みが空洞化している。原初の eml-sr を工夫して精度を上げられないか」を実測で確認 → **採用式に EML 演算子が現れる式は 0/99** だった
+- ユーザー指示「Stage A/C を完全に削除して EML の組み合わせだけで精度の高いアルゴリズム」に対応する **純 EML モード (`pure_eml=True`)** を新設 (main から新ブランチ、既存 fable は無変更)
+  - `OperatorRegistry::pure_eml()`: 関数プリミティブは EML(x,y)=e^x−ln(y) のみ、接着は Plus/Times/Neg/定数 (exp/log/べき/除算はすべて EML 合成)
+  - `engine/pure_eml.rs`: EML 基底ブースティング f = c0 + Σ cₖ·EML(Pₖ,Qₖ) (log 拡張アフィン引数、多スタート LM + 検証分割受理) + 純 EML 文法ビーム (先読み採点・挙動多様性・幅再拡張) + 共通後段
+  - 構造バリアント分離 (純単項式/アフィン指数/ガウス族 x+x²/混在) と入れ子 EML ユニット c·e^{Σb·ln x + a1·∏x^c} を追加 (n0·e^{−mgx/kbT} 族)
+  - config/python に pure_eml / pure_basis_stage / lookahead_scoring / behavior_cap を追加、通常経路は不変。単体テスト 7 件追加で計 37 件全通過
+- **本番結果 (Feynman 99式 + 1%ノイズ、EML+算術接着のみ): 31/99 (ok+partial 51/99)、187分**
+  - 原初系 first_AI 9/99・cursor 13/99 (いずれもクリーン) の **2.4〜3.4 倍**、しかもノイズ下
+  - **採用式 79/99 に EML(…) が明示的に出現 (0→79)、純文法違反ゼロ**
+  - アブレーション: 基底ブースティングの寄与は Feynman30 で 4→7、一般で 6→7
+  - I.40.1 は入れ子 EML ユニットでクリーン誤差 1.5e-1→1.8e-3 (フル fable v5 の failed を上回る)
+  - 失敗43式中14式は三角関数 (実数 EML では原理的に表現不能) → 純 EML の理論上限 ~85/99
+- レポート `texts/eml_sr_pure_feynman_test1_report.md` に考察追記、新ブランチ・PR #3 (ドラフト)
+
+### ユーザーが行ったこと
+- 「Stage A/C がメイン化し EML を組み合わせる原初の仕組みが意味を失っている。原初の eml-sr を工夫して精度を上げられないか」と問題提起
+- 続けて「Stage A/C を完全に削除して EML を組み合わせるだけで精度の高いアルゴリズムを作って欲しい」と指示 → 純 EML モードの計画書を承諾
+
+---
+
 ## 2026/07/10 (eml-sr_fable 解説書 manual_eml-sr_fable.md の作成)
 
 ### AI（エージェント・Claude Fable）が行ったこと
