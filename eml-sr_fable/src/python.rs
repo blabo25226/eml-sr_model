@@ -118,6 +118,8 @@ impl PySearcher {
         affine_scaling=true,
         max_boost_terms=6,
         verbose=true,
+        pure_eml=false,
+        pure_basis_stage=true,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -135,6 +137,8 @@ impl PySearcher {
         affine_scaling: bool,
         max_boost_terms: usize,
         verbose: bool,
+        pure_eml: bool,
+        pure_basis_stage: bool,
     ) -> Self {
         let mut config = SearchConfig::fable_default();
         config.max_complexity = max_complexity;
@@ -151,6 +155,8 @@ impl PySearcher {
         config.affine_scaling = affine_scaling;
         config.max_boost_terms = max_boost_terms;
         config.verbose = verbose;
+        config.pure_eml = pure_eml;
+        config.pure_basis_stage = pure_basis_stage;
         Self {
             inner: RustSearcher::new(config),
         }

@@ -28,6 +28,20 @@ impl OperatorRegistry {
         reg
     }
 
+    /// Initialises the pure-EML registry: the only function primitive is
+    /// EML(x, y) = e^x - ln(y); Plus/Times/Neg are the arithmetic glue that
+    /// combines EML units (exp, log, powers and ratios are all expressible
+    /// as EML compositions, e.g. e^u = EML(u, 1), ln v = 1 - EML(0, v)).
+    pub fn pure_eml() -> Self {
+        let mut reg = Self::new();
+        for op in builtin::all_builtins() {
+            if matches!(op.name(), "EML" | "Plus" | "Times" | "Neg") {
+                reg.register(op);
+            }
+        }
+        reg
+    }
+
     /// Registers a new operator and returns its stable operational ID.
     pub fn register(&mut self, op: Box<dyn Operator>) -> usize {
         let id = self.operators.len();
